@@ -9,6 +9,7 @@ function read(relative: string): string {
 const migration = read("../supabase/migrations/202609090001_opportunity_inbox.sql");
 const categoryMigration = read("../supabase/migrations/202609190001_add_competition_category.sql");
 const discoveryMigration = read("../supabase/migrations/202609190002_add_opportunity_discovery.sql");
+const broadDiscoveryMigration = read("../supabase/migrations/202610080001_twice_daily_broad_discovery.sql");
 const bot = read("../supabase/functions/opportunity-bot/index.ts");
 const reminders = read("../supabase/functions/opportunity-reminders/index.ts");
 const discovery = read("../supabase/functions/opportunity-discovery/index.ts");
@@ -104,14 +105,18 @@ test("Opportunity functions do not overwrite AI News names", () => {
   assert.match(webhook, /drop_pending_updates = 'false'/);
 });
 
-test("daily discovery is private, approval-based, duplicate-safe, and scheduled for 8 AM Dubai", () => {
+test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 AM and 7 PM Dubai", () => {
   assert.match(discoveryMigration, /alter table public\.opportunity_discovery_candidates enable row level security/);
   assert.match(discoveryMigration, /revoke all on table public\.opportunity_discovery_candidates from anon, authenticated/);
   assert.match(discoveryMigration, /source_url text not null unique/);
-  assert.match(discoveryMigration, /'0 4 \* \* \*'/);
-  assert.match(discoveryMigration, /opportunity-inbox-daily-discovery/);
+  assert.match(broadDiscoveryMigration, /decision_details jsonb/);
+  assert.match(broadDiscoveryMigration, /'0 3,15 \* \* \*'/);
+  assert.match(broadDiscoveryMigration, /opportunity-inbox-twice-daily-discovery/);
+  assert.match(broadDiscoveryMigration, /opportunity-inbox-daily-discovery/);
   assert.match(discovery, /OPPORTUNITY_CRON_SECRET/);
-  assert.match(discovery, /MAX_DAILY_MESSAGES = 5/);
+  assert.match(discovery, /OPPORTUNITY_BRAVE_SEARCH_API_KEY/);
+  assert.match(discovery, /api[.]search[.]brave[.]com/);
+  assert.match(discovery, /MAX_RUN_MESSAGES = 8/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);
 });

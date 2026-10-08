@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  discoveryCandidateReplyMarkup,
   formatListPage,
+  formatDiscoveryCandidate,
   listReplyMarkup,
   draftReplyMarkup,
   formatDraft,
@@ -9,6 +11,7 @@ import {
   itemReplyMarkup,
   statusReplyMarkup,
 } from "../supabase/functions/_shared/telegram.ts";
+import type { OpportunityDiscoveryCandidateRow } from "../supabase/functions/_shared/types.ts";
 import { parseOpportunityText } from "../supabase/functions/_shared/parser.ts";
 import { opportunityFixture } from "./fixtures.ts";
 
@@ -96,4 +99,68 @@ test("list pages provide navigation after ten items", () => {
 test("registered list has a visible heading", () => {
   const row = opportunityFixture({ status: "registered", status_confirmed_at: new Date().toISOString() });
   assert.match(formatListPage("registered", [row], 1, 0), /^<b>Registered<\/b>/);
+});
+
+test("discovery cards show enough detail to make a decision", () => {
+  const row = {
+    id: "candidate-id",
+    public_id: 4,
+    save_token: "save-token",
+    source_key: "brave:https://example.ae/program",
+    source_url: "https://example.ae/program",
+    source_name: "Brave Search · example.ae",
+    name: "Applied AI Fellowship",
+    organization: "Example Institute",
+    category: "program",
+    source_text: "Applications are open.",
+    deadline_at: "2026-11-15T19:59:00.000Z",
+    deadline_raw: "15 November 2026",
+    deadline_precision: "date",
+    event_at: null,
+    event_raw: null,
+    event_precision: null,
+    next_action: "Review the official page and apply",
+    notes: null,
+    decision_details: {
+      summary: "A selective applied AI fellowship with mentors and research teams.",
+      why_relevant: "Matches Yusuf's applied AI direction and provides mentorship.",
+      source_platform: "example.ae",
+      official_source_url: "https://example.ae/program",
+      listing_status: "open",
+      evidence_level: "official",
+      cost: "Free",
+      location: "Abu Dhabi",
+      format: "In person",
+      eligibility: "UAE residents and university students",
+      restrictions: "Students only",
+      access: "Eligibility gated",
+      commitment: "10 weeks",
+      benefits: ["Mentorship", "Research exposure"],
+      uncertainties: ["Weekly hours are not stated"],
+      recommendation: "strong_fit",
+      fit_score: 91,
+      checked_at: "2026-10-08T08:00:00.000Z",
+    },
+    status: "new",
+    attempt_count: 0,
+    claimed_at: null,
+    sent_at: null,
+    telegram_message_id: null,
+    error_message: null,
+    opportunity_id: null,
+    checked_at: "2026-10-08T08:00:00.000Z",
+    created_at: "2026-10-08T08:00:00.000Z",
+    updated_at: "2026-10-08T08:00:00.000Z",
+  } as OpportunityDiscoveryCandidateRow;
+  const message = formatDiscoveryCandidate(row);
+  assert.match(message, /What it is/);
+  assert.match(message, /Why it may fit you/);
+  assert.match(message, /Eligibility/);
+  assert.match(message, /Strong fit \(91\/100\)/);
+  assert.match(message, /Still uncertain/);
+  assert.ok(message.length < 4096);
+  const markup = discoveryCandidateReplyMarkup(row) as {
+    inline_keyboard: Array<Array<{ text: string; url?: string }>>;
+  };
+  assert.equal(markup.inline_keyboard[1][0].text, "Open official source");
 });

@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.116.0";
-import { gdgCandidateFromEventPage, gdgUpcomingEventUrls } from "../_shared/discovery.ts";
+import {
+  candidateFromBraveResult,
+  gdgCandidateFromEventPage,
+  gdgUpcomingEventUrls,
+  opportunitySearchQueries,
+  type BraveWebResult,
+  type DiscoveryCandidateInput,
+  type OpportunitySearchQuery,
+} from "../_shared/discovery.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import type { OpportunityDiscoveryCandidateRow } from "../_shared/types.ts";
 import {
@@ -8,14 +16,19 @@ import {
   formatDiscoveryCandidate,
   sendHtml,
 } from "../_shared/telegram.ts";
-import { constantTimeEqual, jsonResponse, requiredEnv, safeError } from "../_shared/utils.ts";
+import { constantTimeEqual, jsonResponse, normalizeKey, requiredEnv, safeError } from "../_shared/utils.ts";
 
 const SOURCES = [
   { name: "GDG Abu Dhabi", url: "https://gdg.community.dev/gdg-abu-dhabi/" },
   { name: "GDG Sharjah", url: "https://gdg.community.dev/gdg-sharjah/" },
   { name: "GDG Dubai", url: "https://gdg.community.dev/gdg-dubai/" },
 ] as const;
-const MAX_DAILY_MESSAGES = 5;
+const MAX_RUN_MESSAGES = 8;
+const MAX_NEW_CANDIDATES_PER_RUN = 60;
+
+interface BraveSearchResponse {
+  web?: { results?: BraveWebResult[] };
+}
 
 interface CandidateClaim {
   claimed: boolean;
@@ -37,6 +50,104 @@ async function fetchOfficialPage(url: string): Promise<string> {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function searchBrave(
+  search: OpportunitySearchQuery,
+  apiKey: string,
+): Promise<BraveWebResult[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const parameters = new URLSearchParams({
+      q: search.query,
+      count: "20",
+      country: "AE",
+      search_lang: "en",
+      safesearch: "strict",
+      freshness: "pm",
+      result_filter: "web",
+      extra_snippets: "true",
+      text_decorations: "false",
+    });
+    const response = await fetch(`https://api.search.brave.com/res/v1/web/search?${parameters}`, {
+      signal: controller.signal,
+      headers: {
+        accept: "application/json",
+        "x-subscription-token": apiKey,
+        "x-loc-city": "Dubai",
+        "x-loc-country": "AE",
+        "x-loc-timezone": "Asia/Dubai",
+        "user-agent": "Yusuf-Opportunity-Inbox/2.0",
+      },
+    });
+    if (!response.ok) throw new Error(`Brave Search returned HTTP ${response.status}`);
+    const body = await response.json() as BraveSearchResponse;
+    return Array.isArray(body.web?.results) ? body.web.results : [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function candidateAlreadyExists(
+  database: SupabaseClient,
+  candidate: DiscoveryCandidateInput,
+): Promise<boolean> {
+  const existing = await database.from("opportunity_discovery_candidates")
+    .select("id").eq("source_url", candidate.sourceUrl).maybeSingle();
+  if (existing.error) throw new Error(existing.error.message);
+  if (existing.data) return true;
+  let existingNameQuery = database.from("opportunity_discovery_candidates")
+    .select("id").eq("name", candidate.name);
+  if (candidate.organization !== "Not stated") {
+    existingNameQuery = existingNameQuery.eq("organization", candidate.organization);
+  }
+  const existingName = await existingNameQuery.limit(1);
+  if (existingName.error) throw new Error(existingName.error.message);
+  if ((existingName.data?.length ?? 0) > 0) return true;
+  const saved = await database.from("opportunities").select("id")
+    .eq("source_url", candidate.sourceUrl).maybeSingle();
+  if (saved.error) throw new Error(saved.error.message);
+  if (saved.data) return true;
+  let savedNameQuery = database.from("opportunities").select("id")
+    .eq("normalized_name", normalizeKey(candidate.name));
+  if (candidate.organization !== "Not stated") {
+    savedNameQuery = savedNameQuery.eq("normalized_organization", normalizeKey(candidate.organization));
+  }
+  const savedName = await savedNameQuery.limit(1);
+  if (savedName.error) throw new Error(savedName.error.message);
+  return (savedName.data?.length ?? 0) > 0;
+}
+
+async function insertCandidate(
+  database: SupabaseClient,
+  candidate: DiscoveryCandidateInput,
+  now: Date,
+): Promise<OpportunityDiscoveryCandidateRow | null> {
+  const values = {
+    source_key: candidate.sourceKey,
+    source_url: candidate.sourceUrl,
+    source_name: candidate.sourceName,
+    name: candidate.name,
+    organization: candidate.organization,
+    category: candidate.category,
+    source_text: candidate.sourceText,
+    deadline_at: candidate.deadlineAt,
+    deadline_raw: candidate.deadlineRaw,
+    deadline_precision: candidate.deadlinePrecision,
+    event_at: candidate.eventAt,
+    event_raw: candidate.eventRaw,
+    event_precision: candidate.eventPrecision,
+    next_action: candidate.nextAction,
+    notes: candidate.notes,
+    decision_details: candidate.decisionDetails,
+    checked_at: now.toISOString(),
+  };
+  const inserted = await database.from("opportunity_discovery_candidates")
+    .insert(values).select("*").single();
+  if (inserted.error?.code === "23505") return null;
+  if (inserted.error) throw new Error(inserted.error.message);
+  return inserted.data as OpportunityDiscoveryCandidateRow;
 }
 
 async function claimCandidate(database: SupabaseClient, id: string): Promise<boolean> {
@@ -121,71 +232,101 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const queued = await database.from("opportunity_discovery_candidates")
     .select("*").in("status", ["new", "failed"])
-    .order("created_at", { ascending: true }).limit(MAX_DAILY_MESSAGES);
+    .order("created_at", { ascending: true }).limit(MAX_RUN_MESSAGES);
   if (queued.error) return jsonResponse({ error: safeError(queued.error) }, 500);
   for (const row of (queued.data ?? []) as OpportunityDiscoveryCandidateRow[]) {
     if (await deliverCandidate(database, row)) sent += 1;
   }
 
+  let insertedThisRun = 0;
   for (const source of SOURCES) {
     try {
       const chapterHtml = await fetchOfficialPage(source.url);
       const urls = gdgUpcomingEventUrls(chapterHtml);
       for (const url of urls) {
         checked += 1;
-        if (sent >= MAX_DAILY_MESSAGES) break;
-
-        const existing = await database.from("opportunity_discovery_candidates")
-          .select("id").eq("source_url", url).maybeSingle();
-        if (existing.error) throw new Error(existing.error.message);
-        if (existing.data) {
-          duplicates += 1;
-          continue;
-        }
-        const saved = await database.from("opportunities").select("id")
-          .eq("source_url", url).maybeSingle();
-        if (saved.error) throw new Error(saved.error.message);
-        if (saved.data) {
-          duplicates += 1;
-          continue;
-        }
-
         const eventHtml = await fetchOfficialPage(url);
         const candidate = gdgCandidateFromEventPage(eventHtml, source.name, now);
         if (!candidate) continue;
         relevant += 1;
-        const values = {
-          source_key: candidate.sourceKey,
-          source_url: candidate.sourceUrl,
-          source_name: candidate.sourceName,
-          name: candidate.name,
-          organization: candidate.organization,
-          category: candidate.category,
-          source_text: candidate.sourceText,
-          deadline_at: candidate.deadlineAt,
-          deadline_raw: candidate.deadlineRaw,
-          deadline_precision: candidate.deadlinePrecision,
-          event_at: candidate.eventAt,
-          event_raw: candidate.eventRaw,
-          event_precision: candidate.eventPrecision,
-          next_action: candidate.nextAction,
-          notes: candidate.notes,
-          checked_at: now.toISOString(),
-        };
-        const inserted = await database.from("opportunity_discovery_candidates")
-          .insert(values).select("*").single();
-        if (inserted.error?.code === "23505") {
+        if (await candidateAlreadyExists(database, candidate)) {
           duplicates += 1;
           continue;
         }
-        if (inserted.error) throw new Error(inserted.error.message);
-        const row = inserted.data as OpportunityDiscoveryCandidateRow;
-        if (await deliverCandidate(database, row)) sent += 1;
+        const row = await insertCandidate(database, candidate, now);
+        if (!row) {
+          duplicates += 1;
+          continue;
+        }
+        insertedThisRun += 1;
+        if (sent < MAX_RUN_MESSAGES && await deliverCandidate(database, row)) sent += 1;
       }
     } catch (error) {
       sourceErrors.push(`${source.name}: ${safeError(error)}`);
     }
   }
 
-  return jsonResponse({ ok: true, checked, relevant, sent, duplicates, sourceErrors });
+  const braveApiKey = Deno.env.get("OPPORTUNITY_BRAVE_SEARCH_API_KEY")?.trim() ?? "";
+  const searches = opportunitySearchQueries(now);
+  let queriesRun = 0;
+  if (!braveApiKey) {
+    sourceErrors.push("Broad web and social search is not configured");
+  } else {
+    const searchResults = await Promise.allSettled(searches.map(async (search) => ({
+      search,
+      results: await searchBrave(search, braveApiKey),
+    })));
+    const candidates = new Map<string, DiscoveryCandidateInput>();
+    for (const result of searchResults) {
+      if (result.status === "rejected") {
+        sourceErrors.push(`Web search: ${safeError(result.reason)}`);
+        continue;
+      }
+      queriesRun += 1;
+      for (const webResult of result.value.results) {
+        checked += 1;
+        const candidate = candidateFromBraveResult(webResult, now);
+        if (!candidate) continue;
+        relevant += 1;
+        const previous = candidates.get(candidate.sourceUrl);
+        if (!previous || candidate.decisionDetails.fit_score > previous.decisionDetails.fit_score) {
+          candidates.set(candidate.sourceUrl, candidate);
+        }
+      }
+    }
+
+    const ranked = [...candidates.values()].sort((left, right) =>
+      right.decisionDetails.fit_score - left.decisionDetails.fit_score
+    );
+    for (const candidate of ranked) {
+      if (insertedThisRun >= MAX_NEW_CANDIDATES_PER_RUN) break;
+      try {
+        if (await candidateAlreadyExists(database, candidate)) {
+          duplicates += 1;
+          continue;
+        }
+        const row = await insertCandidate(database, candidate, now);
+        if (!row) {
+          duplicates += 1;
+          continue;
+        }
+        insertedThisRun += 1;
+        if (sent < MAX_RUN_MESSAGES && await deliverCandidate(database, row)) sent += 1;
+      } catch (error) {
+        sourceErrors.push(`${candidate.sourceName}: ${safeError(error)}`);
+      }
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    checked,
+    relevant,
+    sent,
+    duplicates,
+    inserted: insertedThisRun,
+    queriesRun,
+    broadSearchConfigured: Boolean(braveApiKey),
+    sourceErrors,
+  });
 });

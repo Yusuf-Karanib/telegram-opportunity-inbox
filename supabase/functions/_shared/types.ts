@@ -58,6 +58,39 @@ export type OpportunityView = (typeof VIEWS)[number];
 
 export type DatePrecision = "date" | "datetime";
 
+export type OpportunityListingStatus =
+  | "open"
+  | "not_open_yet"
+  | "closed"
+  | "finished"
+  | "cancelled"
+  | "unverified";
+
+export type OpportunityEvidenceLevel = "official" | "aggregator" | "web_listing" | "social_lead";
+
+export type OpportunityRecommendation = "strong_fit" | "possible_fit" | "investigate";
+
+export interface OpportunityDecisionDetails {
+  summary: string;
+  why_relevant: string;
+  source_platform: string;
+  official_source_url: string | null;
+  listing_status: OpportunityListingStatus;
+  evidence_level: OpportunityEvidenceLevel;
+  cost: string;
+  location: string;
+  format: string;
+  eligibility: string;
+  restrictions: string;
+  access: string;
+  commitment: string;
+  benefits: string[];
+  uncertainties: string[];
+  recommendation: OpportunityRecommendation;
+  fit_score: number;
+  checked_at: string;
+}
+
 export interface OpportunityDraft {
   saveToken: string;
   name: string;
@@ -144,6 +177,7 @@ export interface OpportunityDiscoveryCandidateRow {
   event_precision: DatePrecision | null;
   next_action: string | null;
   notes: string | null;
+  decision_details: OpportunityDecisionDetails | null;
   status: "new" | "sending" | "sent" | "failed" | "unknown" | "saved" | "dismissed" | "expired";
   attempt_count: number;
   claimed_at: string | null;

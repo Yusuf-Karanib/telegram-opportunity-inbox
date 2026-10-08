@@ -437,6 +437,59 @@ export function reminderReplyMarkup(row: OpportunityRow): Record<string, unknown
 }
 
 export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow): string {
+  const details = row.decision_details;
+  if (details) {
+    const recommendation = details.recommendation === "strong_fit"
+      ? "Strong fit"
+      : details.recommendation === "possible_fit"
+      ? "Possible fit"
+      : "Investigate first";
+    const evidence = details.evidence_level === "official"
+      ? "Official or organizer page"
+      : details.evidence_level === "aggregator"
+      ? "Opportunity platform listing"
+      : details.evidence_level === "web_listing"
+      ? "Public web listing; official page still needed"
+      : "Public social-media lead; official page still needed";
+    const officialSource = details.official_source_url
+      ? `<a href="${escapeHtml(details.official_source_url)}">Open official source</a>`
+      : "Not found yet";
+    return [
+      ["social_lead", "web_listing"].includes(details.evidence_level)
+        ? "<b>New opportunity lead</b>"
+        : "<b>New opportunity found</b>",
+      "",
+      `<b>${escapeHtml(cleanText(row.name, 180))}</b>`,
+      `<b>Organization:</b> ${shown(row.organization, 160)}`,
+      `<b>Category:</b> ${escapeHtml(categoryName(row.category))}`,
+      "",
+      `<b>What it is:</b> ${shown(details.summary, 420)}`,
+      `<b>Why it may fit you:</b> ${shown(details.why_relevant, 300)}`,
+      "",
+      `<b>Status:</b> ${escapeHtml(details.listing_status.replaceAll("_", " "))}`,
+      `<b>Deadline:</b> ${escapeHtml(formatDubaiMoment(row.deadline_at, row.deadline_precision))}`,
+      `<b>Event:</b> ${escapeHtml(formatDubaiMoment(row.event_at, row.event_precision))}`,
+      `<b>Location:</b> ${shown(details.location, 180)}`,
+      `<b>Format:</b> ${shown(details.format, 100)}`,
+      `<b>Cost:</b> ${shown(details.cost, 150)}`,
+      `<b>Eligibility:</b> ${shown(details.eligibility, 260)}`,
+      `<b>Restrictions:</b> ${shown(details.restrictions, 260)}`,
+      `<b>Access:</b> ${shown(details.access, 160)}`,
+      `<b>Commitment:</b> ${shown(details.commitment, 180)}`,
+      `<b>Potential value:</b> ${shown(details.benefits.join(", "), 220)}`,
+      "",
+      `<b>My assessment:</b> ${recommendation} (${details.fit_score}/100)`,
+      `<b>Next action:</b> ${shown(row.next_action, 240)}`,
+      `<b>Still uncertain:</b> ${shown(details.uncertainties.join("; "), 350)}`,
+      "",
+      `<b>Evidence:</b> ${escapeHtml(evidence)}`,
+      `<b>Found through:</b> ${shown(details.source_platform, 100)}`,
+      `<b>Official source:</b> ${officialSource}`,
+      `<b>Checked:</b> ${escapeHtml(details.checked_at.slice(0, 10))}`,
+      "",
+      "Nothing is added to your inbox until you press Save.",
+    ].join("\n");
+  }
   return [
     "<b>New opportunity found</b>",
     "",
@@ -454,13 +507,16 @@ export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow):
 }
 
 export function discoveryCandidateReplyMarkup(row: OpportunityDiscoveryCandidateRow): Record<string, unknown> {
+  const sourceLabel = row.decision_details?.evidence_level === "official"
+    ? "Open official source"
+    : "Open discovery source";
   return {
     inline_keyboard: [
       [
         { text: "Save", callback_data: `dc:${row.public_id}:save` },
         { text: "Dismiss", callback_data: `dc:${row.public_id}:dismiss` },
       ],
-      [{ text: "Open official source", url: row.source_url }],
+      [{ text: sourceLabel, url: row.source_url }],
     ],
   };
 }

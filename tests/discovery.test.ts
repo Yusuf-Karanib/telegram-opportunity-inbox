@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  candidateFromBraveResult,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
+  opportunitySearchQueries,
 } from "../supabase/functions/_shared/discovery.ts";
 
 function nextPage(pageProps: Record<string, unknown>): string {
@@ -98,4 +100,72 @@ test("rejects a promo-code guide even when it mentions real technology events", 
     gdgCandidateFromEventPage(guide, "GDG Dubai", new Date("2026-09-20T08:00:00Z")),
     null,
   );
+});
+
+test("builds ten broad searches including public social platforms", () => {
+  const searches = opportunitySearchQueries(new Date("2026-10-08T08:00:00Z"));
+  assert.equal(searches.length, 10);
+  const combined = searches.map((search) => search.query).join("\n");
+  assert.match(combined, /site:linkedin[.]com\/posts/);
+  assert.match(combined, /site:x[.]com/);
+  assert.match(combined, /site:instagram[.]com/);
+  assert.match(combined, /site:devpost[.]com/);
+  assert.match(combined, /MBZUAI/);
+  assert.match(combined, /2027/);
+});
+
+test("turns an official indexed program into a detailed decision card", () => {
+  const candidate = candidateFromBraveResult({
+    title: "Applied AI Fellowship 2026 | Example Institute",
+    url: "https://example-institute.ae/fellowship?utm_source=search",
+    description: "Applications are open for a UAE applied AI fellowship with mentors, research teams, and startup partners. Cost AED 150.",
+    extra_snippets: ["Eligibility: UAE residents and university students. Applications close 15 November 2026."],
+    deep_results: { schemas: [{
+      "@type": "EducationalOccupationalProgram",
+      name: "Applied AI Fellowship 2026",
+      provider: { name: "Example Institute" },
+      applicationDeadline: "2026-11-15",
+      location: { name: "Abu Dhabi", address: { addressCountry: "UAE" } },
+    }] },
+  }, new Date("2026-10-08T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.name, "Applied AI Fellowship 2026");
+  assert.equal(candidate.organization, "Example Institute");
+  assert.equal(candidate.category, "program");
+  assert.equal(candidate.sourceUrl, "https://example-institute.ae/fellowship");
+  assert.equal(candidate.decisionDetails.evidence_level, "official");
+  assert.equal(candidate.decisionDetails.listing_status, "open");
+  assert.equal(candidate.decisionDetails.cost, "AED 150");
+  assert.match(candidate.decisionDetails.location, /Abu Dhabi/);
+  assert.match(candidate.decisionDetails.eligibility, /UAE residents/);
+  assert.equal(candidate.decisionDetails.official_source_url, candidate.sourceUrl);
+  assert.ok(candidate.decisionDetails.uncertainties.some((value) => /restrictions/i.test(value)) === false);
+});
+
+test("keeps a public LinkedIn internship as a clearly unverified social lead", () => {
+  const candidate = candidateFromBraveResult({
+    title: "ElevenLabs AI internship program applications open | LinkedIn",
+    url: "https://www.linkedin.com/posts/example-elevenlabs-internship",
+    description: "Applications are open for a remote worldwide AI internship. Deadline: 20 October 2026. Mentorship and project teams included.",
+  }, new Date("2026-10-08T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.category, "internship");
+  assert.equal(candidate.decisionDetails.source_platform, "LinkedIn");
+  assert.equal(candidate.decisionDetails.evidence_level, "social_lead");
+  assert.equal(candidate.decisionDetails.official_source_url, null);
+  assert.equal(candidate.decisionDetails.recommendation, "investigate");
+  assert.match(candidate.nextAction, /official application/i);
+});
+
+test("rejects completion posts and closed listings from web search", () => {
+  assert.equal(candidateFromBraveResult({
+    title: "Congratulations to our AI program graduates | LinkedIn",
+    url: "https://www.linkedin.com/posts/example-completion",
+    description: "Our students successfully completed the UAE AI program.",
+  }, new Date("2026-10-08T08:00:00Z")), null);
+  assert.equal(candidateFromBraveResult({
+    title: "Dubai Robotics Internship",
+    url: "https://example.ae/robotics-internship",
+    description: "Applications are closed for this UAE robotics internship.",
+  }, new Date("2026-10-08T08:00:00Z")), null);
 });

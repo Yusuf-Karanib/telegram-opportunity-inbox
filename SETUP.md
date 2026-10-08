@@ -7,8 +7,9 @@ You need:
 1. Telegram.
 2. A free Supabase account.
 3. Node.js 22.6 or newer on the setup computer.
+4. A Brave Search API key for broad web and public social-page discovery.
 
-No AI API or paid service is required.
+No LLM API is required. Brave's current signup or free-credit rules may require a payment card, so check them before enabling the broad scout.
 
 ## 1. Create the Telegram bot
 
@@ -33,7 +34,7 @@ Enter the token only when asked. Save the displayed user ID and chat ID.
 2. Copy its project reference from project settings.
 3. Keep the database password private.
 
-## 3. Deploy the private database and two functions
+## 3. Deploy the private database and three functions
 
 Run:
 
@@ -43,7 +44,21 @@ Run:
 
 Enter the project reference and sign in when Supabase opens the browser.
 
-## 4. Create the private secrets
+## 4. Enable broad web and social discovery
+
+1. Create a Brave Search API account at [Brave Search API](https://brave.com/search/api/).
+2. Create a Search API key.
+3. Run:
+
+```powershell
+./tools/configure-broad-scout.ps1
+```
+
+Paste the key only into the secure prompt. The script stores it directly as a Supabase secret and does not keep it in this folder.
+
+The scout uses ten searches at 7:00 AM and ten at 7:00 PM UAE time. It can find public LinkedIn, X, and Instagram pages through Brave's web index, but it cannot read private or unindexed posts.
+
+## 5. Create the private Telegram secrets
 
 Fast path: run this single script. It configures the secrets and Telegram, then opens
 the SQL Editor with the reminder setup already copied to your clipboard:
@@ -52,7 +67,7 @@ the SQL Editor with the reminder setup already copied to your clipboard:
 ./tools/finish-setup.ps1
 ```
 
-Paste into the opened SQL Editor and click **Run**, then continue at step 7.
+Paste into the opened SQL Editor and click **Run**, then continue at step 8.
 
 Manual path:
 
@@ -73,7 +88,7 @@ In Supabase, open **Project Settings > Edge Functions > Secrets** and add:
 
 Do not save real secrets in this package or send them in chat.
 
-## 5. Turn on reminders
+## 6. Turn on reminders
 
 1. Open `supabase/setup_schedule.sql`.
 2. Copy it into Supabase **SQL Editor**.
@@ -85,7 +100,7 @@ The worker checks every 15 minutes. It records each delivery so the same reminde
 
 Processed bot updates are kept for 90 days and reminder delivery records for 180 days, then cleaned automatically.
 
-## 6. Connect Telegram
+## 7. Connect Telegram
 
 Run:
 
@@ -95,7 +110,7 @@ Run:
 
 Enter the new bot token, project reference, and the same webhook secret from step 4.
 
-## 7. Test
+## 8. Test
 
 Send this to the bot:
 
@@ -117,7 +132,7 @@ The bot must show a draft with status **Saved only — not applied or registered
 
 Then send `AWS Security Bulletin CVE-2026-12345`. It must classify the message as a security alert and must not show a Save button.
 
-Send `/discover` to run the official-source scout immediately. It also runs automatically every day at 8:00 AM UAE time.
+Send `/discover` to run the full scout immediately. It also runs automatically at 7:00 AM and 7:00 PM UAE time.
 
 Run local checks with:
 
@@ -146,3 +161,13 @@ where jobname = 'opportunity-inbox-reminders-15m';
 ```
 
 This stops reminders without deleting any opportunity.
+
+## Stop automatic opportunity searches
+
+Run this in Supabase SQL Editor:
+
+```sql
+select cron.unschedule(jobid)
+from cron.job
+where jobname = 'opportunity-inbox-twice-daily-discovery';
+```

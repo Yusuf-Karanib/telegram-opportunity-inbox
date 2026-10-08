@@ -17,9 +17,11 @@ A certificate alone is not a reason to recommend something.
 5. Hub71 programs and events
 6. Dubai Future Foundation
 7. Official UAE government, university, employer, incubator, and organizer sources
-8. Devpost, Meetup, and Eventbrite
+8. Devpost, Meetup, Eventbrite, and F6S
+9. Public LinkedIn, X, and Instagram pages found through web search
+10. Company career, internship, research, and community pages
 
-LinkedIn and social posts may reveal a lead, but the organizer or original registration page must confirm it. A completion or recap post is not an active opportunity.
+LinkedIn and social posts may reveal a lead, but the organizer or original registration page must confirm it. A social-only item may be delivered as `Investigate first`; it must not be called verified or strongly recommended. A completion or recap post is not an active opportunity.
 
 ## Classify first
 
@@ -59,6 +61,9 @@ Before recommending an item, record:
 - Access: `public`, `invite_only`, `referral_required`, `eligibility_gated`, or `unclear`
 - Concrete affiliation value
 - Recommended next action
+- Evidence level: official, opportunity platform, public web listing, or social lead
+- Yusuf fit score and the concrete reasons behind it
+- Every important fact that is still uncertain
 
 Never fill missing facts with guesses. If official sources conflict, use the newest official source and clearly note the conflict.
 
@@ -67,6 +72,8 @@ The Telegram bot does not browse or verify webpages. It stores only the text Yus
 ## Recommendation rule
 
 Recommend only when the item is verified, actionable, relevant, accessible from the UAE, and offers meaningful experience, affiliation, or backing.
+
+Search widely but deliver narrowly. Internships, selective programs, research teams, mentors, startup support, sponsored travel, hackathons, credible communities, and important UAE events take priority. Ordinary certificate courses and generic jobs do not.
 
 Do not recommend closed or finished items, certificate-only courses, technical news, security alerts, completion posts, duplicates, or claims that cannot be traced to an original source.
 

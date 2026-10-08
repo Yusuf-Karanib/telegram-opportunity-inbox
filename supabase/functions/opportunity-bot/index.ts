@@ -612,14 +612,23 @@ async function handleCommand(
     return;
   }
   if (command.kind === "discover") {
-    await sendText("Checking official sources now.", undefined, replyTo);
+    await sendText("Checking official sites and public web/social results now.", undefined, replyTo);
     const result = await runDiscoveryNow();
     const sent = Number(result.sent ?? 0);
     const checked = Number(result.checked ?? 0);
+    const inserted = Number(result.inserted ?? 0);
+    const queriesRun = Number(result.queriesRun ?? 0);
+    const broadSearchConfigured = result.broadSearchConfigured === true;
     const errors = Array.isArray(result.sourceErrors) ? result.sourceErrors.length : 0;
-    await sendText(errors > 0
-      ? `Search finished. Checked ${checked}; sent ${sent}. ${errors} source failed and will be checked tomorrow.`
-      : `Search finished. Checked ${checked}; sent ${sent} new opportunities.`);
+    if (!broadSearchConfigured) {
+      await sendText(
+        `Search finished. The three GDG pages were checked, but broad web and social search is not configured yet. Sent ${sent} new opportunities.`,
+      );
+    } else {
+      await sendText(errors > 0
+        ? `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}. ${errors} source checks failed and will be retried at the next search.`
+        : `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}.`);
+    }
     return;
   }
   if (command.kind === "list") {
