@@ -116,6 +116,8 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discovery, /OPPORTUNITY_CRON_SECRET/);
   assert.match(discovery, /OPPORTUNITY_BRAVE_SEARCH_API_KEY/);
   assert.match(discovery, /api[.]search[.]brave[.]com/);
+  assert.match(discovery, /country:\s*["']ALL["']/);
+  assert.doesNotMatch(discovery, /country:\s*["']AE["']/);
   assert.match(discovery, /MAX_RUN_MESSAGES = 8/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);

@@ -16,7 +16,14 @@ import {
   formatDiscoveryCandidate,
   sendHtml,
 } from "../_shared/telegram.ts";
-import { constantTimeEqual, jsonResponse, normalizeKey, requiredEnv, safeError } from "../_shared/utils.ts";
+import {
+  cleanText,
+  constantTimeEqual,
+  jsonResponse,
+  normalizeKey,
+  requiredEnv,
+  safeError,
+} from "../_shared/utils.ts";
 
 const SOURCES = [
   { name: "GDG Abu Dhabi", url: "https://gdg.community.dev/gdg-abu-dhabi/" },
@@ -67,7 +74,9 @@ async function searchBrave(
     const parameters = new URLSearchParams({
       q: search.query,
       count: "20",
-      country: "AE",
+      // Brave's search-country enum does not include the UAE. Search globally,
+      // then use the UAE terms and location headers below to keep local focus.
+      country: "ALL",
       search_lang: "en",
       safesearch: "strict",
       freshness: "pm",
