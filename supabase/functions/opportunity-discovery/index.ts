@@ -28,6 +28,11 @@ const MAX_NEW_CANDIDATES_PER_RUN = 60;
 
 interface BraveSearchResponse {
   web?: { results?: BraveWebResult[] };
+  error?: {
+    code?: unknown;
+    detail?: unknown;
+    status?: unknown;
+  };
 }
 
 interface CandidateClaim {
@@ -81,8 +86,21 @@ async function searchBrave(
         "user-agent": "Yusuf-Opportunity-Inbox/2.0",
       },
     });
-    if (!response.ok) throw new Error(`Brave Search returned HTTP ${response.status}`);
-    const body = await response.json() as BraveSearchResponse;
+    const bodyText = await response.text();
+    let body: BraveSearchResponse = {};
+    try {
+      body = JSON.parse(bodyText) as BraveSearchResponse;
+    } catch {
+      // Brave can return a non-JSON gateway message. Do not echo arbitrary HTML.
+    }
+    if (!response.ok) {
+      const code = cleanText(body.error?.code, 80);
+      const detail = cleanText(body.error?.detail, 180);
+      const explanation = [code, detail].filter(Boolean).join(": ");
+      throw new Error(
+        `Brave Search returned HTTP ${response.status}${explanation ? ` (${explanation})` : ""}`,
+      );
+    }
     return Array.isArray(body.web?.results) ? body.web.results : [];
   } finally {
     clearTimeout(timeout);

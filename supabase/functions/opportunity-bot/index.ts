@@ -619,14 +619,18 @@ async function handleCommand(
     const inserted = Number(result.inserted ?? 0);
     const queriesRun = Number(result.queriesRun ?? 0);
     const broadSearchConfigured = result.broadSearchConfigured === true;
-    const errors = Array.isArray(result.sourceErrors) ? result.sourceErrors.length : 0;
+    const sourceErrors = Array.isArray(result.sourceErrors)
+      ? result.sourceErrors.map((value) => cleanText(value, 300)).filter(Boolean)
+      : [];
+    const errors = sourceErrors.length;
+    const firstWebError = sourceErrors.find((value) => value.startsWith("Web search:"));
     if (!broadSearchConfigured) {
       await sendText(
         `Search finished. The three GDG pages were checked, but broad web and social search is not configured yet. Sent ${sent} new opportunities.`,
       );
     } else {
       await sendText(errors > 0
-        ? `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}. ${errors} source checks failed and will be retried at the next search.`
+        ? `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}. ${errors} source checks failed.${firstWebError ? `\n\nProblem: ${firstWebError.replace(/^Web search:\s*/, "")}` : ""}`
         : `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}.`);
     }
     return;
