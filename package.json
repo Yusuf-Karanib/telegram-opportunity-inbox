@@ -1,0 +1,14 @@
+{
+  "name": "yusuf-telegram-opportunity-inbox",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "supabase": "2.116.0"
+  }
+}

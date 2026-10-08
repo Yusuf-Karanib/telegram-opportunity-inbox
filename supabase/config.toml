@@ -1,0 +1,13 @@
+project_id = "telegram-opportunity-inbox"
+
+[functions.opportunity-bot]
+enabled = true
+verify_jwt = false
+
+[functions.opportunity-reminders]
+enabled = true
+verify_jwt = false
+
+[functions.opportunity-discovery]
+enabled = true
+verify_jwt = false
