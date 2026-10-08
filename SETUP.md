@@ -46,6 +46,14 @@ Enter the project reference and sign in when Supabase opens the browser.
 
 ## 4. Enable broad web and social discovery
 
+For an existing Opportunity Inbox, use the single-command upgrade. It signs in, deploys the code and database change, then securely stores the search key:
+
+```powershell
+./tools/activate-broad-scout.ps1
+```
+
+For a brand-new installation, continue below.
+
 1. Create a Brave Search API account at [Brave Search API](https://brave.com/search/api/).
 2. Create a Search API key.
 3. Run:
