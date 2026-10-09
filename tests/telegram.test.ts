@@ -101,7 +101,7 @@ test("registered list has a visible heading", () => {
   assert.match(formatListPage("registered", [row], 1, 0), /^<b>Registered<\/b>/);
 });
 
-test("discovery cards show enough detail to make a decision", () => {
+test("discovery cards are compact and only show useful facts", () => {
   const row = {
     id: "candidate-id",
     public_id: 4,
@@ -153,14 +153,19 @@ test("discovery cards show enough detail to make a decision", () => {
     updated_at: "2026-10-08T08:00:00.000Z",
   } as OpportunityDiscoveryCandidateRow;
   const message = formatDiscoveryCandidate(row);
-  assert.match(message, /What it is/);
-  assert.match(message, /Why it may fit you/);
+  assert.match(message, /Applied AI Fellowship/);
+  assert.match(message, /Example Institute · Program/);
+  assert.match(message, /selective applied AI fellowship/);
+  assert.match(message, /Deadline/);
+  assert.match(message, /Place/);
+  assert.match(message, /Cost/);
   assert.match(message, /Eligibility/);
-  assert.match(message, /Strong fit \(91\/100\)/);
-  assert.match(message, /Still uncertain/);
-  assert.ok(message.length < 4096);
+  assert.doesNotMatch(message, /Why it may fit|My assessment|Next action|Still uncertain/);
+  assert.doesNotMatch(message, /Evidence|Found through|Official source|Checked/);
+  assert.doesNotMatch(message, /Nothing is added|Not set|Not stated|Unclear/);
+  assert.ok(message.length < 1_200);
   const markup = discoveryCandidateReplyMarkup(row) as {
     inline_keyboard: Array<Array<{ text: string; url?: string }>>;
   };
-  assert.equal(markup.inline_keyboard[1][0].text, "Open official source");
+  assert.equal(markup.inline_keyboard[1][0].text, "Open link");
 });

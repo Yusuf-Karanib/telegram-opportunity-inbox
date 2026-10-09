@@ -10,6 +10,7 @@ const migration = read("../supabase/migrations/202609090001_opportunity_inbox.sq
 const categoryMigration = read("../supabase/migrations/202609190001_add_competition_category.sql");
 const discoveryMigration = read("../supabase/migrations/202609190002_add_opportunity_discovery.sql");
 const broadDiscoveryMigration = read("../supabase/migrations/202610080001_twice_daily_broad_discovery.sql");
+const discoveryCleanupMigration = read("../supabase/migrations/202610090001_clear_noisy_discovery_backlog.sql");
 const bot = read("../supabase/functions/opportunity-bot/index.ts");
 const reminders = read("../supabase/functions/opportunity-reminders/index.ts");
 const discovery = read("../supabase/functions/opportunity-discovery/index.ts");
@@ -118,7 +119,8 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discovery, /api[.]search[.]brave[.]com/);
   assert.match(discovery, /country:\s*["']ALL["']/);
   assert.doesNotMatch(discovery, /country:\s*["']AE["']/);
-  assert.match(discovery, /MAX_RUN_MESSAGES = 8/);
+  assert.match(discovery, /MAX_RUN_MESSAGES = 5/);
+  assert.match(discoveryCleanupMigration, /where status in \('new', 'failed'\)/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);
 });

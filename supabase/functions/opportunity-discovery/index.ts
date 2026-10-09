@@ -4,6 +4,7 @@ import {
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
   opportunitySearchQueries,
+  shouldNotifyDiscoveryCandidate,
   type BraveWebResult,
   type DiscoveryCandidateInput,
   type OpportunitySearchQuery,
@@ -30,8 +31,8 @@ const SOURCES = [
   { name: "GDG Sharjah", url: "https://gdg.community.dev/gdg-sharjah/" },
   { name: "GDG Dubai", url: "https://gdg.community.dev/gdg-dubai/" },
 ] as const;
-const MAX_RUN_MESSAGES = 8;
-const MAX_NEW_CANDIDATES_PER_RUN = 60;
+const MAX_RUN_MESSAGES = 5;
+const MAX_NEW_CANDIDATES_PER_RUN = 5;
 
 interface BraveSearchResponse {
   web?: { results?: BraveWebResult[] };
@@ -313,7 +314,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       for (const webResult of result.value.results) {
         checked += 1;
         const candidate = candidateFromBraveResult(webResult, now);
-        if (!candidate) continue;
+        if (!candidate || !shouldNotifyDiscoveryCandidate(candidate, now)) continue;
         relevant += 1;
         const previous = candidates.get(candidate.sourceUrl);
         if (!previous || candidate.decisionDetails.fit_score > previous.decisionDetails.fit_score) {

@@ -8,8 +8,8 @@
 - An unclear item becomes `other` and requires a manual category.
 - A competition, hackathon, event, program, job, internship, or course can be saved after review.
 - Cost, location, eligibility, restrictions, access, and date-checked labels remain visible in Notes.
-- Closed, finished, invite-only, and missing-eligibility research results are clearly labelled and never guessed.
-- Social-only results are labelled as leads and never described as official sources.
+- Closed, finished, invite-only, article, and expired research results are not delivered.
+- Social-only results require an explicit open status and future date, and are never described as official sources.
 
 ## Automated
 
@@ -23,7 +23,7 @@
 - Deadline, event, manual, next-action, and course-inactivity reminders
 - Telegram HTML escaping and callback length
 - Ten search groups covering official sites, LinkedIn, X, Instagram, Devpost, Meetup, Eventbrite, and F6S
-- Detailed discovery cards with evidence, fit score, recommendation, and uncertainties
+- Compact discovery cards that omit scores, repeated warnings, evidence prose, and unknown fields
 - Twice-daily 7:00 AM and 7:00 PM Dubai schedule
 - Static checks for private database access, webhook authentication, update replay protection, and reminder claims
 
@@ -39,5 +39,5 @@
 8. Snooze the reminder and confirm its date changes.
 9. Mark course activity and verify the inactivity clock resets.
 10. Archive and restore an item.
-11. Run `/discover` and confirm a social result says **Investigate first** unless an official page is present.
+11. Run `/discover` and confirm every delivered result has a future date and a simple **Open link** button.
 12. Confirm the automatic scout runs near 7:00 AM and 7:00 PM UAE time.

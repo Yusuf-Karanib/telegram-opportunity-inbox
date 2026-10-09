@@ -15,7 +15,7 @@ The Telegram chat is the inbox. `/inbox` shows one dashboard with buttons for:
 ## Fast twice-daily flow
 
 1. The scout checks official pages and ten public web/social search groups at 7:00 AM and 7:00 PM UAE time.
-2. Review the description, fit, dates, cost, eligibility, restrictions, evidence, and missing facts.
+2. Review the short description and any known date, location, cost, eligibility, restrictions, or commitment.
 3. Tap **Save**, **Dismiss**, or open the source.
 4. Paste or forward other opportunities manually.
 5. The bot extracts only details present in the message.

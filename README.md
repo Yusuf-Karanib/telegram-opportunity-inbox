@@ -6,7 +6,7 @@ Paste or forward opportunity text. The bot creates a review draft, extracts only
 
 The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and ten web-search groups covering official UAE sources, public LinkedIn posts, X, Instagram, Devpost, Meetup, Eventbrite, F6S, company program pages, and globally accessible opportunities. Use `/discover` to check immediately.
 
-Public social posts are discovery leads, not proof. The bot labels them clearly and asks for an official application or registration page before recommending action. It does not log into social accounts or read private posts.
+Public social posts are discovery leads, not proof. They are sent only when they clearly say applications or registration are open and include a future date. The bot does not log into social accounts or read private posts.
 
 The bot classifies every message first. Technical news, security alerts, completion posts, and unclear items cannot be saved as opportunities unless Yusuf manually changes them to a real opportunity category.
 
@@ -21,7 +21,7 @@ The bot classifies every message first. Technical news, security alerts, complet
 - Notes and outcome
 - Course activity
 
-Discovered cards include a description, why the item may fit Yusuf, status, deadline, event date, cost, location, eligibility, restrictions, commitment, likely benefits, source quality, missing facts, a fit score, and an honest recommendation. Missing facts stay **Not stated**.
+Discovery cards are intentionally short: title, organization/category, a brief description, and only useful known facts such as date, location, cost, eligibility, restrictions, and commitment. Unknown fields, scores, repeated warnings, and source-analysis text are hidden.
 
 ## Views
 
@@ -33,7 +33,7 @@ Pasted text never changes an item's status to applied, registered, accepted, or 
 
 Dates are filled only when a clear label is present, such as `Deadline:` or `Event:`. Unlabelled dates are shown as possible dates but are not assigned.
 
-The scout filters out expired or closed listings, technical news, security alerts, completion posts, and likely duplicates. A social or third-party result may be delivered as an **Investigate first** lead, but only an organizer-owned page can be labelled official.
+The scout filters out expired or closed listings, articles, guides, technical news, security alerts, completion posts, invite-only items, and likely duplicates. Ordinary third-party articles are not delivered. Public social and opportunity-platform listings require an explicit open status and a future date.
 
 ## Cost and stack
 

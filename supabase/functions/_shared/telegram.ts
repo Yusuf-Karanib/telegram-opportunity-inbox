@@ -153,6 +153,26 @@ function shown(value: string | null | undefined, maximumLength = 900): string {
   return value ? escapeHtml(cleanText(value, maximumLength)) : "Not set";
 }
 
+function discoveryText(value: string | null | undefined, maximumLength: number): string | null {
+  if (!value) return null;
+  const cleaned = cleanText(value, maximumLength)
+    .replaceAll("&#x27;", "'")
+    .replaceAll("&#39;", "'")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&amp;", "&")
+    .replaceAll("&nbsp;", " ");
+  if (
+    !cleaned ||
+    /^(?:not set|not stated|unknown|unclear|none found|venue not announced)$/i.test(cleaned)
+  ) return null;
+  return cleaned;
+}
+
+function discoveryFact(label: string, value: string | null | undefined, maximumLength: number): string | null {
+  const cleaned = discoveryText(value, maximumLength);
+  return cleaned ? `<b>${label}:</b> ${escapeHtml(cleaned)}` : null;
+}
+
 function categoryName(category: OpportunityDraft["category"]): string {
   return category.replaceAll("_", " ");
 }
@@ -438,85 +458,59 @@ export function reminderReplyMarkup(row: OpportunityRow): Record<string, unknown
 
 export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow): string {
   const details = row.decision_details;
-  if (details) {
-    const recommendation = details.recommendation === "strong_fit"
-      ? "Strong fit"
-      : details.recommendation === "possible_fit"
-      ? "Possible fit"
-      : "Investigate first";
-    const evidence = details.evidence_level === "official"
-      ? "Official or organizer page"
-      : details.evidence_level === "aggregator"
-      ? "Opportunity platform listing"
-      : details.evidence_level === "web_listing"
-      ? "Public web listing; official page still needed"
-      : "Public social-media lead; official page still needed";
-    const officialSource = details.official_source_url
-      ? `<a href="${escapeHtml(details.official_source_url)}">Open official source</a>`
-      : "Not found yet";
-    return [
-      ["social_lead", "web_listing"].includes(details.evidence_level)
-        ? "<b>New opportunity lead</b>"
-        : "<b>New opportunity found</b>",
-      "",
-      `<b>${escapeHtml(cleanText(row.name, 180))}</b>`,
-      `<b>Organization:</b> ${shown(row.organization, 160)}`,
-      `<b>Category:</b> ${escapeHtml(categoryName(row.category))}`,
-      "",
-      `<b>What it is:</b> ${shown(details.summary, 420)}`,
-      `<b>Why it may fit you:</b> ${shown(details.why_relevant, 300)}`,
-      "",
-      `<b>Status:</b> ${escapeHtml(details.listing_status.replaceAll("_", " "))}`,
-      `<b>Deadline:</b> ${escapeHtml(formatDubaiMoment(row.deadline_at, row.deadline_precision))}`,
-      `<b>Event:</b> ${escapeHtml(formatDubaiMoment(row.event_at, row.event_precision))}`,
-      `<b>Location:</b> ${shown(details.location, 180)}`,
-      `<b>Format:</b> ${shown(details.format, 100)}`,
-      `<b>Cost:</b> ${shown(details.cost, 150)}`,
-      `<b>Eligibility:</b> ${shown(details.eligibility, 260)}`,
-      `<b>Restrictions:</b> ${shown(details.restrictions, 260)}`,
-      `<b>Access:</b> ${shown(details.access, 160)}`,
-      `<b>Commitment:</b> ${shown(details.commitment, 180)}`,
-      `<b>Potential value:</b> ${shown(details.benefits.join(", "), 220)}`,
-      "",
-      `<b>My assessment:</b> ${recommendation} (${details.fit_score}/100)`,
-      `<b>Next action:</b> ${shown(row.next_action, 240)}`,
-      `<b>Still uncertain:</b> ${shown(details.uncertainties.join("; "), 350)}`,
-      "",
-      `<b>Evidence:</b> ${escapeHtml(evidence)}`,
-      `<b>Found through:</b> ${shown(details.source_platform, 100)}`,
-      `<b>Official source:</b> ${officialSource}`,
-      `<b>Checked:</b> ${escapeHtml(details.checked_at.slice(0, 10))}`,
-      "",
-      "Nothing is added to your inbox until you press Save.",
-    ].join("\n");
+  const organization = discoveryText(row.organization, 120);
+  const shownOrganization = organization && !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(organization)
+    ? organization
+    : null;
+  const category = categoryName(row.category).replace(/^./, (letter) => letter.toUpperCase());
+  const meta = [shownOrganization, category].filter(Boolean).join(" · ");
+  const lines = [
+    `<b>${escapeHtml(discoveryText(row.name, 180) ?? "Opportunity")}</b>`,
+    escapeHtml(meta),
+  ];
+
+  const summary = discoveryText(details?.summary, 320);
+  if (summary && !/^the search result did not provide/i.test(summary)) {
+    lines.push("", escapeHtml(summary));
   }
-  return [
-    "<b>New opportunity found</b>",
-    "",
-    `<b>${escapeHtml(cleanText(row.name, 180))}</b>`,
-    `<b>Organization:</b> ${shown(row.organization, 160)}`,
-    `<b>Category:</b> ${escapeHtml(categoryName(row.category))}`,
-    `<b>Event:</b> ${escapeHtml(formatDubaiMoment(row.event_at, row.event_precision))}`,
-    `<b>Deadline:</b> ${escapeHtml(formatDubaiMoment(row.deadline_at, row.deadline_precision))}`,
-    `<b>Next action:</b> ${shown(row.next_action, 500)}`,
-    `<b>Verified details:</b> ${shown(row.notes, 1_500)}`,
-    `<b>Source:</b> <a href="${escapeHtml(row.source_url)}">Official page</a>`,
-    "",
-    "Nothing is added to your inbox until you press Save.",
-  ].join("\n");
+
+  const facts: string[] = [];
+  if (row.deadline_at) {
+    facts.push(`<b>Deadline:</b> ${escapeHtml(formatDubaiMoment(row.deadline_at, row.deadline_precision))}`);
+  }
+  if (row.event_at) {
+    facts.push(`<b>Date:</b> ${escapeHtml(formatDubaiMoment(row.event_at, row.event_precision))}`);
+  }
+  if (details) {
+    const location = discoveryText(details.location, 140);
+    const format = discoveryText(details.format, 60);
+    const place = [location, format]
+      .filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index)
+      .join(" · ");
+    const placeLine = discoveryFact("Place", place, 190);
+    const costLine = discoveryFact("Cost", details.cost, 100);
+    const eligibilityLine = discoveryFact("Eligibility", details.eligibility, 220);
+    const restrictions = discoveryText(details.restrictions, 180);
+    const restrictionLine = restrictions && restrictions !== discoveryText(details.eligibility, 180)
+      ? discoveryFact("Restrictions", restrictions, 180)
+      : null;
+    const commitmentLine = discoveryFact("Commitment", details.commitment, 150);
+    for (const line of [placeLine, costLine, eligibilityLine, restrictionLine, commitmentLine]) {
+      if (line) facts.push(line);
+    }
+  }
+  if (facts.length > 0) lines.push("", ...facts);
+  return lines.filter((line, index, all) => line !== "" || (index > 0 && all[index - 1] !== "")).join("\n");
 }
 
 export function discoveryCandidateReplyMarkup(row: OpportunityDiscoveryCandidateRow): Record<string, unknown> {
-  const sourceLabel = row.decision_details?.evidence_level === "official"
-    ? "Open official source"
-    : "Open discovery source";
   return {
     inline_keyboard: [
       [
         { text: "Save", callback_data: `dc:${row.public_id}:save` },
         { text: "Dismiss", callback_data: `dc:${row.public_id}:dismiss` },
       ],
-      [{ text: sourceLabel, url: row.source_url }],
+      [{ text: "Open link", url: row.source_url }],
     ],
   };
 }

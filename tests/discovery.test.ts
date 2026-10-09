@@ -5,6 +5,7 @@ import {
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
   opportunitySearchQueries,
+  shouldNotifyDiscoveryCandidate,
 } from "../supabase/functions/_shared/discovery.ts";
 
 function nextPage(pageProps: Record<string, unknown>): string {
@@ -168,4 +169,52 @@ test("rejects completion posts and closed listings from web search", () => {
     url: "https://example.ae/robotics-internship",
     description: "Applications are closed for this UAE robotics internship.",
   }, new Date("2026-10-08T08:00:00Z")), null);
+});
+
+test("does not notify from third-party articles even when they mention a deadline", () => {
+  const candidate = candidateFromBraveResult({
+    title: "2027 MBZUAI Scholarships in UAE | Scholarship Blog",
+    url: "https://scholarship-blog.example/mbzuai-2027",
+    description: "Applications are open for an AI scholarship in the UAE. The final deadline is 15 December 2026.",
+  }, new Date("2026-10-08T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.decisionDetails.evidence_level, "web_listing");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), false);
+});
+
+test("rejects articles and expired events instead of misclassifying them", () => {
+  assert.equal(candidateFromBraveResult({
+    title: "AI & ML Engineer Salary in Dubai: 2026 Guide",
+    url: "https://example.com/ai-salary-guide",
+    description: "A guide to AI, cloud, robotics, research, competitions, and jobs in the UAE.",
+  }, new Date("2026-10-08T08:00:00Z")), null);
+
+  assert.equal(candidateFromBraveResult({
+    title: "Home | AWS Summit Dubai 30 September 2026",
+    url: "https://aws.amazon.com/events/summits/dubai",
+    description: "Register now for a free AI and cloud event in Dubai.",
+  }, new Date("2026-10-08T08:00:00Z")), null);
+});
+
+test("extracts a future event date from an official title", () => {
+  const candidate = candidateFromBraveResult({
+    title: "AWS Community Day Dubai 18 November 2026",
+    url: "https://aws.amazon.com/events/community-day-dubai",
+    description: "Register now for a free AI and cloud conference in Dubai with technical sessions and networking.",
+  }, new Date("2026-10-08T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.category, "event");
+  assert.ok(candidate.eventAt);
+  assert.equal(candidate.decisionDetails.evidence_level, "official");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), true);
+});
+
+test("does not notify invite-only results", () => {
+  const candidate = candidateFromBraveResult({
+    title: "Invite-only AI Founder Summit Dubai 18 November 2026",
+    url: "https://aws.amazon.com/events/founder-summit",
+    description: "An invite-only AI and cloud summit in Dubai for selected founders.",
+  }, new Date("2026-10-08T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), false);
 });
