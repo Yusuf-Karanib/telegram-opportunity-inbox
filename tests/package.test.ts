@@ -11,6 +11,7 @@ const categoryMigration = read("../supabase/migrations/202609190001_add_competit
 const discoveryMigration = read("../supabase/migrations/202609190002_add_opportunity_discovery.sql");
 const broadDiscoveryMigration = read("../supabase/migrations/202610080001_twice_daily_broad_discovery.sql");
 const discoveryCleanupMigration = read("../supabase/migrations/202610090001_clear_noisy_discovery_backlog.sql");
+const emptyNoticeMigration = read("../supabase/migrations/202610090002_notify_empty_scout_runs.sql");
 const bot = read("../supabase/functions/opportunity-bot/index.ts");
 const reminders = read("../supabase/functions/opportunity-reminders/index.ts");
 const discovery = read("../supabase/functions/opportunity-discovery/index.ts");
@@ -121,6 +122,10 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.doesNotMatch(discovery, /country:\s*["']AE["']/);
   assert.match(discovery, /MAX_RUN_MESSAGES = 5/);
   assert.match(discoveryCleanupMigration, /where status in \('new', 'failed'\)/);
+  assert.match(emptyNoticeMigration, /'0 3,15 \* \* \*'/);
+  assert.match(emptyNoticeMigration, /"notify_empty": true/);
+  assert.match(discovery, /No new verified opportunities found/);
+  assert.match(discovery, /emptyNoticeSent/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);
 });

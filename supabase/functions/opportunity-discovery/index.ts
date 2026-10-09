@@ -16,6 +16,7 @@ import {
   discoveryCandidateReplyMarkup,
   formatDiscoveryCandidate,
   sendHtml,
+  sendText,
 } from "../_shared/telegram.ts";
 import {
   cleanText,
@@ -244,6 +245,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
+  let notifyEmpty = false;
+  try {
+    const body = await request.json() as Record<string, unknown>;
+    notifyEmpty = body?.notify_empty === true;
+  } catch {
+    // An empty or malformed body does not enable scheduled notifications.
+  }
+
   const database = adminClient();
   const now = new Date();
   let checked = 0;
@@ -346,6 +355,25 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
   }
 
+  let emptyNoticeSent = false;
+  if (notifyEmpty && sent === 0) {
+    const dubaiHour = Number(new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Dubai",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(now));
+    const runLabel = dubaiHour < 12 ? "7 AM" : "7 PM";
+    const message = sourceErrors.length === 0
+      ? `${runLabel} search complete. No new verified opportunities found.`
+      : `${runLabel} search finished with ${sourceErrors.length} source errors. I will retry at the next run.`;
+    try {
+      await sendText(message);
+      emptyNoticeSent = true;
+    } catch (error) {
+      sourceErrors.push(`Scheduled status message: ${safeError(error)}`);
+    }
+  }
+
   return jsonResponse({
     ok: true,
     checked,
@@ -355,6 +383,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     inserted: insertedThisRun,
     queriesRun,
     broadSearchConfigured: Boolean(braveApiKey),
+    emptyNoticeSent,
     sourceErrors,
   });
 });

@@ -6,6 +6,8 @@ Paste or forward opportunity text. The bot creates a review draft, extracts only
 
 The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and ten web-search groups covering official UAE sources, public LinkedIn posts, X, Instagram, Devpost, Meetup, Eventbrite, F6S, company program pages, and globally accessible opportunities. Use `/discover` to check immediately.
 
+When a scheduled search finds nothing new, the bot sends one short confirmation instead of staying silent.
+
 Public social posts are discovery leads, not proof. They are sent only when they clearly say applications or registration are open and include a future date. The bot does not log into social accounts or read private posts.
 
 The bot classifies every message first. Technical news, security alerts, completion posts, and unclear items cannot be saved as opportunities unless Yusuf manually changes them to a real opportunity category.

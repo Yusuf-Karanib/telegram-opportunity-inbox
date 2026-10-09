@@ -6,6 +6,7 @@ Checked on 9 October 2026.
 - Classification tests cover CVE bulletins, technical news, completion posts, unclear items, competitions, and cybersecurity hackathons.
 - Broad discovery tests cover official pages, public LinkedIn leads, ten web-search groups, third-party articles, expired events, source quality, future dates, and compact cards.
 - The new schedule is 7:00 AM and 7:00 PM UAE time.
+- Empty scheduled runs send a one-line confirmation; manual `/discover` calls do not duplicate it.
 - All 9 PowerShell setup scripts parsed successfully.
 - The locked Supabase CLI version is 2.116.0 and its deploy options were verified.
 - No real Telegram or Supabase credentials are stored in this package.
