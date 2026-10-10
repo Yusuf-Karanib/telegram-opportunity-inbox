@@ -74,7 +74,7 @@ interface GdgEventDetail extends GdgEventSummary {
   tags?: unknown;
 }
 
-const RELEVANT_TECH = /\b(ai|artificial intelligence|machine learning|software|developer|development|cloud|robot(?:ics)?|automation|coding|programming|startup|hackathon|devfest|data|cybersecurity|web|android|flutter|google|technology|technical)\b/i;
+const RELEVANT_TECH = /\b(ai|artificial intelligence|machine learning|computer science|software|developer|development|cloud|robot(?:ics)?|automation|coding|programming|startup|hackathon|devfest|data(?: science)?|cybersecurity|deep tech|digital|innovation|engineering|web|android|flutter|google|technology|technical)\b/i;
 const NON_OPPORTUNITY_LISTING = /\b(?:promo(?:tional)?|discount) code\b|\bpromo code guide\b/i;
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -233,13 +233,13 @@ const CLOSED_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+
 const FINISHED_SIGNAL = /\b(?:event has ended|program has ended|successfully concluded|that(?:'s| is) a wrap|we were thrilled to host|highlights from|recap of|completion post)\b/i;
 const CANCELLED_SIGNAL = /\b(?:event|program|competition|hackathon)\s+(?:was|is|has been)\s+cancelled\b/i;
 const NOT_OPEN_SIGNAL = /\b(?:applications?|registration)\s+(?:will\s+)?open(?:s)?\s+(?:on|soon)\b|\bcoming soon\b/i;
-const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bregister now\b|\bnow accepting\b|\brsvp\b/i;
-const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain)\b/i;
+const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bregister now\b|\bstart application\b|\bapplication form\b|\bnow accepting\b|\brsvp\b/i;
+const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain|dubai internet city|expo city)\b/i;
 const REMOTE_ACCESS = /\b(?:remote|online|virtual|worldwide|global applicants?|open internationally|anywhere in the world)\b/i;
 const MEANINGFUL_AFFILIATION = /\b(?:mentor(?:ship|ing)?|cohort|fellowship|research|team|incubator|accelerator|internship|apprenticeship|grant|funding|sponsor(?:ed|ship)?|travel support|community|networking|reference|portfolio|demo day|residency)\b/i;
 const COMPLETION_OR_NEWS = /\b(?:cve-\d|security bulletin|vulnerability|patch advisory|has completed|successfully completed|graduated from|celebrating our|congratulations to|product update|release notes)\b/i;
 const ARTICLE_TITLE = /\b(?:salary|guide|report|news|roundup|landscape|recap|highlights?|launches|announces|shaping the future)\b/i;
-const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|khalifa university|nyu abu dhabi|american university of sharjah)\b/i;
+const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|g42|core42|khalifa university|nyu abu dhabi|uae university|american university of sharjah|startad|sheraa|in5|difc innovation hub|microsoft reactor|aws user group)\b/i;
 const AGGREGATOR_HOSTS = new Set(["devpost.com", "www.devpost.com", "meetup.com", "www.meetup.com", "eventbrite.com", "www.eventbrite.com", "f6s.com", "www.f6s.com"]);
 const KNOWN_OFFICIAL_HOSTS = new Set([
   "42abudhabi.ae",
@@ -253,6 +253,20 @@ const KNOWN_OFFICIAL_HOSTS = new Set([
   "gitex.com",
   "aieverythingglobal.com",
   "stevensinitiative.org",
+  "tii.ae",
+  "g42.ai",
+  "core42.ai",
+  "ku.ac.ae",
+  "nyu.edu",
+  "uaeu.ac.ae",
+  "aus.edu",
+  "startad.ae",
+  "sheraa.com",
+  "in5.ae",
+  "difc.com",
+  "microsoft.com",
+  "google.com",
+  "amazon.jobs",
 ]);
 
 const DATE_FRAGMENT = String.raw`(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?)?|\d{1,2}[\/-]\d{1,2}[\/-]\d{4}(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4}(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)`;
@@ -260,8 +274,8 @@ const DATE_FRAGMENT = String.raw`(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}(?::\d{2})?(?
 export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySearchQuery[] {
   const year = checkedAt.getUTCFullYear();
   const years = `(${year} OR ${year + 1})`;
-  const topics = `(AI OR "artificial intelligence" OR software OR robotics OR cloud OR startup)`;
-  const uae = `(UAE OR Dubai OR "Abu Dhabi" OR Sharjah)`;
+  const topics = `(AI OR "artificial intelligence" OR software OR robotics OR cloud OR "deep tech" OR startup)`;
+  const uae = `(UAE OR Dubai OR "Abu Dhabi" OR Sharjah OR "Al Ain" OR Ajman OR "Ras Al Khaimah")`;
   return [
     {
       key: "uae-programs-internships",
@@ -302,6 +316,22 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     {
       key: "global-accessible",
       query: `${topics} (remote OR worldwide OR "open internationally" OR "sponsored travel") (internship OR fellowship OR hackathon OR program) (apply OR "applications open") ${years}`,
+    },
+    {
+      key: "uae-universities-research",
+      query: `(MBZUAI OR "Khalifa University" OR "NYU Abu Dhabi" OR UAEU OR "American University of Sharjah") ${topics} (research OR internship OR fellowship OR lab OR program OR event) (apply OR register OR "open call") ${years}`,
+    },
+    {
+      key: "uae-innovation-hubs",
+      query: `(Hub71 OR startAD OR Sheraa OR in5 OR "DIFC Innovation Hub" OR "Dubai Future Accelerators" OR "Technology Innovation Institute") (accelerator OR incubator OR grant OR challenge OR fellowship OR event OR "open call") ${years}`,
+    },
+    {
+      key: "uae-tech-communities",
+      query: `("GDG Dubai" OR "GDG Abu Dhabi" OR "GDG Sharjah" OR "AWS User Group" OR "Microsoft Reactor" OR "IEEE UAE" OR "UAE Robotics") (meetup OR workshop OR conference OR hackathon OR program) ${years}`,
+    },
+    {
+      key: "uae-early-career",
+      query: `${uae} ${topics} (internship OR apprenticeship OR "graduate program" OR "early career" OR trainee OR fellowship) (apply OR "applications open") ${years}`,
     },
   ];
 }
@@ -720,10 +750,11 @@ export function shouldNotifyDiscoveryCandidate(
   const details = candidate.decisionDetails;
   if (["closed", "finished", "cancelled", "not_open_yet"].includes(details.listing_status)) return false;
   if (/invite only|referral required/i.test(details.access)) return false;
+  if (details.evidence_level === "web_listing") return false;
+  if (details.evidence_level === "official" && details.listing_status === "open") return true;
   const deadlineIsFuture = candidate.deadlineAt ? new Date(candidate.deadlineAt) >= checkedAt : false;
   const eventIsFuture = candidate.eventAt ? new Date(candidate.eventAt) >= checkedAt : false;
   if (!deadlineIsFuture && !eventIsFuture) return false;
-  if (details.evidence_level === "web_listing") return false;
   if (details.evidence_level === "official") return true;
   return details.listing_status === "open";
 }

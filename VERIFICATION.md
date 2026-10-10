@@ -2,9 +2,9 @@
 
 Checked on 9 October 2026.
 
-- 66 of 66 automated tests passed.
+- 67 of 67 automated tests passed.
 - Classification tests cover CVE bulletins, technical news, completion posts, unclear items, competitions, and cybersecurity hackathons.
-- Broad discovery tests cover official pages, public LinkedIn leads, ten web-search groups, third-party articles, expired events, source quality, future dates, and compact cards.
+- Broad discovery tests cover official pages, public LinkedIn leads, fourteen web-search groups, UAE universities, startup hubs, communities, early-career roles, third-party articles, expired events, source quality, future dates, and compact cards.
 - The new schedule is 7:00 AM and 7:00 PM UAE time.
 - Empty scheduled runs send a one-line confirmation; manual `/discover` calls do not duplicate it.
 - All 9 PowerShell setup scripts parsed successfully.
@@ -16,4 +16,4 @@ The broad scout, compact cards, stricter verification rules, and twice-daily sch
 
 ## Final live check
 
-The live check completed all ten web/social searches without source errors. Every suggestion still requires **Save**; the scout never silently adds an item.
+The live check completed all fourteen web/social searches without source errors. Every suggestion still requires **Save**; the scout never silently adds an item.

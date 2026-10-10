@@ -103,15 +103,23 @@ test("rejects a promo-code guide even when it mentions real technology events", 
   );
 });
 
-test("builds ten broad searches including public social platforms", () => {
+test("builds fourteen broad searches including public social platforms and UAE ecosystems", () => {
   const searches = opportunitySearchQueries(new Date("2026-10-08T08:00:00Z"));
-  assert.equal(searches.length, 10);
+  assert.equal(searches.length, 14);
+  for (const search of searches) {
+    assert.ok(search.query.length <= 600);
+    assert.ok(search.query.trim().split(/\s+/).length <= 75);
+  }
   const combined = searches.map((search) => search.query).join("\n");
   assert.match(combined, /site:linkedin[.]com\/posts/);
   assert.match(combined, /site:x[.]com/);
   assert.match(combined, /site:instagram[.]com/);
   assert.match(combined, /site:devpost[.]com/);
   assert.match(combined, /MBZUAI/);
+  assert.match(combined, /Khalifa University/);
+  assert.match(combined, /DIFC Innovation Hub/);
+  assert.match(combined, /Microsoft Reactor/);
+  assert.match(combined, /early career/);
   assert.match(combined, /2027/);
 });
 
@@ -217,4 +225,17 @@ test("does not notify invite-only results", () => {
   }, new Date("2026-10-08T08:00:00Z"));
   assert.ok(candidate);
   assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), false);
+});
+
+test("notifies an official open application even when no deadline is published", () => {
+  const candidate = candidateFromBraveResult({
+    title: "Hub71 Applied AI Startup Program",
+    url: "https://www.hub71.com/programs/applied-ai",
+    description: "Applications are open for an applied AI startup accelerator in Abu Dhabi. Start application now.",
+  }, new Date("2026-10-08T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.deadlineAt, null);
+  assert.equal(candidate.decisionDetails.evidence_level, "official");
+  assert.equal(candidate.decisionDetails.listing_status, "open");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), true);
 });

@@ -81,7 +81,7 @@ async function searchBrave(
       country: "ALL",
       search_lang: "en",
       safesearch: "strict",
-      freshness: "pm",
+      freshness: "py",
       result_filter: "web",
       extra_snippets: "true",
       text_decorations: "false",
