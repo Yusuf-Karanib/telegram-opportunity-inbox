@@ -34,6 +34,7 @@ export interface DiscoveryCandidateInput {
 export interface OpportunitySearchQuery {
   key: string;
   query: string;
+  searchLanguage?: "en" | "ar";
 }
 
 export interface BraveWebResult {
@@ -74,7 +75,7 @@ interface GdgEventDetail extends GdgEventSummary {
   tags?: unknown;
 }
 
-const RELEVANT_TECH = /\b(ai|artificial intelligence|machine learning|computer science|software|developer|development|cloud|robot(?:ics)?|automation|coding|programming|startup|hackathon|devfest|data(?: science)?|cybersecurity|deep tech|digital|innovation|engineering|web|android|flutter|google|technology|technical)\b/i;
+const RELEVANT_TECH = /\b(ai|artificial intelligence|machine learning|computer science|software|developer|development|cloud|robot(?:ics)?|automation|coding|programming|startup|hackathon|devfest|data(?: science)?|cybersecurity|deep tech|digital|innovation|engineering|web|android|flutter|google|technology|technical)\b|الذكاء الاصطناعي|تعلم الآلة|علوم الحاسوب|البرمجيات|البرمجة|الحوسبة السحابية|الروبوتات|الأمن السيبراني|الابتكار|التكنولوجيا|التقنية|الهندسة/i;
 const NON_OPPORTUNITY_LISTING = /\b(?:promo(?:tional)?|discount) code\b|\bpromo code guide\b/i;
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -228,19 +229,19 @@ export function gdgCandidateFromEventPage(
   };
 }
 
-const OPPORTUNITY_SIGNAL = /\b(?:apply|applications?|registration|register|rsvp|open call|now open|join|internship|apprenticeship|fellowship|accelerator|incubator|mentorship|research program|hackathon|competition|challenge|summit|conference|workshop|meetup|bootcamp|scholarship|grant)\b/i;
-const CLOSED_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+)?closed\b|\bno longer accepting\b|\bdeadline has passed\b|\bapplications? ended\b/i;
+const OPPORTUNITY_SIGNAL = /\b(?:apply|applications?|registration|register|rsvp|open call|now open|join|sign up|tickets?|internship|apprenticeship|fellowship|accelerator|incubator|mentorship|research program|hackathon|competition|challenge|summit|conference|workshop|meetup|bootcamp|scholarship|grant|residency|summer school|exchange program|career fair|demo day|open day|masterclass|seminar)\b|التسجيل|التقديم|سجّل|قدّم|برنامج|تدريب|زمالة|مسرعة|حاضنة|إرشاد|هاكاثون|مسابقة|تحدي|قمة|مؤتمر|ورشة|منحة/i;
+const CLOSED_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+)?closed\b|\bno longer accepting\b|\bdeadline has passed\b|\bapplications? ended\b|انتهى التسجيل|التسجيل مغلق|انتهى التقديم|إغلاق باب التقديم/i;
 const FINISHED_SIGNAL = /\b(?:event has ended|program has ended|successfully concluded|that(?:'s| is) a wrap|we were thrilled to host|highlights from|recap of|completion post)\b/i;
 const CANCELLED_SIGNAL = /\b(?:event|program|competition|hackathon)\s+(?:was|is|has been)\s+cancelled\b/i;
 const NOT_OPEN_SIGNAL = /\b(?:applications?|registration)\s+(?:will\s+)?open(?:s)?\s+(?:on|soon)\b|\bcoming soon\b/i;
-const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bregister now\b|\bstart application\b|\bapplication form\b|\bnow accepting\b|\brsvp\b/i;
-const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain|dubai internet city|expo city)\b/i;
+const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bapply today\b|\bregister now\b|\bsign up\b|\bstart application\b|\bsubmit your application\b|\bapplication form\b|\bnow accepting\b|\bget tickets?\b|\bbuy (?:a )?pass\b|\breserve your spot\b|\brsvp\b|التسجيل مفتوح|فتح باب التسجيل|التقديم مفتوح|فتح باب التقديم|سجّل الآن|قدم الآن/i;
+const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain|dubai internet city|expo city)\b|الإمارات|أبو\s?ظبي|دبي|الشارقة|عجمان|الفجيرة|رأس الخيمة|أم القيوين|العين/i;
 const REMOTE_ACCESS = /\b(?:remote|online|virtual|worldwide|global applicants?|open internationally|anywhere in the world)\b/i;
 const MEANINGFUL_AFFILIATION = /\b(?:mentor(?:ship|ing)?|cohort|fellowship|research|team|incubator|accelerator|internship|apprenticeship|grant|funding|sponsor(?:ed|ship)?|travel support|community|networking|reference|portfolio|demo day|residency)\b/i;
 const COMPLETION_OR_NEWS = /\b(?:cve-\d|security bulletin|vulnerability|patch advisory|has completed|successfully completed|graduated from|celebrating our|congratulations to|product update|release notes)\b/i;
 const ARTICLE_TITLE = /\b(?:salary|guide|report|news|roundup|landscape|recap|highlights?|launches|announces|shaping the future)\b/i;
 const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|g42|core42|khalifa university|nyu abu dhabi|uae university|american university of sharjah|startad|sheraa|in5|difc innovation hub|microsoft reactor|aws user group)\b/i;
-const AGGREGATOR_HOSTS = new Set(["devpost.com", "www.devpost.com", "meetup.com", "www.meetup.com", "eventbrite.com", "www.eventbrite.com", "f6s.com", "www.f6s.com"]);
+const AGGREGATOR_HOSTS = new Set(["devpost.com", "meetup.com", "eventbrite.com", "f6s.com", "lu.ma", "hackathons.ae"]);
 const KNOWN_OFFICIAL_HOSTS = new Set([
   "42abudhabi.ae",
   "mbzuai.ac.ae",
@@ -267,6 +268,16 @@ const KNOWN_OFFICIAL_HOSTS = new Set([
   "microsoft.com",
   "google.com",
   "amazon.jobs",
+  "atrc.ae",
+  "mbrif.ae",
+  "adgm.com",
+  "dubaichambers.com",
+  "dubaiaifestival.com",
+  "globalaishow.com",
+  "nasaspaceapps.ae",
+  "itu.int",
+  "odoo.com",
+  "volunteers.ae",
 ]);
 
 const DATE_FRAGMENT = String.raw`(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?)?|\d{1,2}[\/-]\d{1,2}[\/-]\d{4}(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4}(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)`;
@@ -274,20 +285,20 @@ const DATE_FRAGMENT = String.raw`(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}(?::\d{2})?(?
 export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySearchQuery[] {
   const year = checkedAt.getUTCFullYear();
   const years = `(${year} OR ${year + 1})`;
-  const topics = `(AI OR "artificial intelligence" OR software OR robotics OR cloud OR "deep tech" OR startup)`;
+  const topics = `(AI OR "artificial intelligence" OR software OR robotics OR cloud OR cybersecurity OR data OR "deep tech" OR startup)`;
   const uae = `(UAE OR Dubai OR "Abu Dhabi" OR Sharjah OR "Al Ain" OR Ajman OR "Ras Al Khaimah")`;
   return [
     {
       key: "uae-programs-internships",
-      query: `${uae} ${topics} (internship OR fellowship OR accelerator OR mentorship OR "applications open") ${years}`,
+      query: `${uae} ${topics} (internship OR apprenticeship OR fellowship OR accelerator OR mentorship OR residency OR "student program" OR "applications open") ${years}`,
     },
     {
       key: "uae-events",
-      query: `${uae} ${topics} (conference OR summit OR workshop OR meetup OR "registration open") ${years}`,
+      query: `${uae} ${topics} (conference OR summit OR workshop OR meetup OR seminar OR masterclass OR "career fair" OR "demo day" OR "registration open") ${years}`,
     },
     {
       key: "uae-build-challenges",
-      query: `${uae} ${topics} (hackathon OR competition OR challenge OR buildathon) (apply OR register) ${years}`,
+      query: `${uae} ${topics} (hackathon OR competition OR challenge OR buildathon OR ideathon OR datathon) (apply OR register OR join) ${years}`,
     },
     {
       key: "uae-startup-research",
@@ -295,7 +306,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "priority-organizations",
-      query: `("42 Abu Dhabi" OR MBZUAI OR Hub71 OR "Dubai Future Foundation" OR "UAE Robotics") (apply OR register OR program OR event OR internship) ${years}`,
+      query: `("42 Abu Dhabi" OR MBZUAI OR Hub71 OR ATRC OR TII OR G42 OR "Dubai Future Foundation" OR MBRIF OR "UAE Space Agency") (apply OR register OR program OR event OR internship OR challenge) ${years}`,
     },
     {
       key: "linkedin-public-posts",
@@ -311,11 +322,11 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "opportunity-platforms",
-      query: `(site:devpost.com OR site:meetup.com OR site:eventbrite.com OR site:f6s.com) ${uae} ${topics} ${years}`,
+      query: `(site:devpost.com OR site:meetup.com OR site:eventbrite.com OR site:f6s.com OR site:lu.ma OR site:hackathons.ae) ${uae} ${topics} ${years}`,
     },
     {
       key: "global-accessible",
-      query: `${topics} (remote OR worldwide OR "open internationally" OR "sponsored travel") (internship OR fellowship OR hackathon OR program) (apply OR "applications open") ${years}`,
+      query: `${topics} (remote OR worldwide OR "open internationally" OR "sponsored travel") (internship OR fellowship OR hackathon OR program OR "summer school" OR exchange) (apply OR "applications open") ${years}`,
     },
     {
       key: "uae-universities-research",
@@ -323,7 +334,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "uae-innovation-hubs",
-      query: `(Hub71 OR startAD OR Sheraa OR in5 OR "DIFC Innovation Hub" OR "Dubai Future Accelerators" OR "Technology Innovation Institute") (accelerator OR incubator OR grant OR challenge OR fellowship OR event OR "open call") ${years}`,
+      query: `(Hub71 OR startAD OR Sheraa OR in5 OR "DIFC Innovation Hub" OR MBRIF OR ADGM OR "Dubai Chambers" OR "Technology Innovation Institute") (accelerator OR incubator OR grant OR challenge OR fellowship OR event OR "open call") ${years}`,
     },
     {
       key: "uae-tech-communities",
@@ -331,7 +342,12 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "uae-early-career",
-      query: `${uae} ${topics} (internship OR apprenticeship OR "graduate program" OR "early career" OR trainee OR fellowship) (apply OR "applications open") ${years}`,
+      query: `${uae} ${topics} (internship OR apprenticeship OR placement OR "graduate program" OR "early career" OR trainee OR fellowship) (apply OR "applications open") ${years}`,
+    },
+    {
+      key: "uae-arabic-opportunities",
+      query: `(الإمارات OR دبي OR "أبو ظبي" OR الشارقة OR عجمان) ("الذكاء الاصطناعي" OR الروبوتات OR البرمجة OR التقنية OR الابتكار) (التسجيل OR التقديم OR برنامج OR تدريب OR هاكاثون OR مسابقة OR ورشة OR مؤتمر) ${years}`,
+      searchLanguage: "ar",
     },
   ];
 }
@@ -402,7 +418,10 @@ function cleanSearchText(value: unknown, maximumLength: number): string {
     .replaceAll("&#39;", "'")
     .replaceAll("&quot;", '"')
     .replaceAll("&amp;", "&")
-    .replaceAll("&nbsp;", " ");
+    .replaceAll("&nbsp;", " ")
+    .replaceAll("\u00e2\u0080\u0094", "—")
+    .replaceAll("\u00e2\u0080\u0093", "–")
+    .replaceAll("\u00e2\u0080\u0099", "'");
 }
 
 function primaryResultText(result: BraveWebResult): string {
@@ -418,7 +437,13 @@ function sourcePlatform(url: URL): string {
   if (host.endsWith("meetup.com")) return "Meetup";
   if (host.endsWith("eventbrite.com")) return "Eventbrite";
   if (host.endsWith("f6s.com")) return "F6S";
+  if (host === "lu.ma" || host.endsWith(".lu.ma")) return "Luma";
+  if (host === "hackathons.ae" || host.endsWith(".hackathons.ae")) return "Hackathons UAE";
   return host.replace(/^www\./, "");
+}
+
+function hostMatches(host: string, domains: Set<string>): boolean {
+  return [...domains].some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
 function evidenceLevel(url: URL, organization: string): OpportunityEvidenceLevel {
@@ -429,8 +454,8 @@ function evidenceLevel(url: URL, organization: string): OpportunityEvidenceLevel
     host === "twitter.com" || host.endsWith(".twitter.com") ||
     host === "instagram.com" || host.endsWith(".instagram.com")
   ) return "social_lead";
-  if (AGGREGATOR_HOSTS.has(host)) return "aggregator";
-  if ([...KNOWN_OFFICIAL_HOSTS].some((domain) => host === domain || host.endsWith(`.${domain}`))) return "official";
+  if (hostMatches(host, AGGREGATOR_HOSTS)) return "aggregator";
+  if (hostMatches(host, KNOWN_OFFICIAL_HOSTS) || host.endsWith(".gov.ae") || host.endsWith(".ac.ae")) return "official";
   if (!organization) return "web_listing";
   const hostWords = host.replace(/^www\./, "").split(/[.\-_]/).filter((word) => word.length >= 4);
   const organizationWords = organization.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length >= 4);
@@ -448,11 +473,11 @@ function listingStatus(text: string): OpportunityListingStatus {
 
 function inferCategory(text: string, schema: Record<string, unknown> | null): OpportunityCategory {
   const types = schema ? schemaTypes(schema) : "";
-  if (/\bintern(?:ship)?\b|\bgraduate trainee\b|\bapprentice(?:ship)?\b/i.test(text)) return "internship";
-  if (/\bhackathon\b|\bbuildathon\b/i.test(text)) return "hackathon";
-  if (/\bcompetition\b|\bchallenge\b|\bcontest\b/i.test(text)) return "competition";
-  if (types.includes("event") || /\bconference\b|\bsummit\b|\bmeetup\b|\bworkshop\b|\btech talk\b|\bnetworking event\b/i.test(text)) return "event";
-  if (/\bcourse\b|\bbootcamp\b|\btraining program\b/i.test(text)) return "course";
+  if (/\bintern(?:ship)?\b|\bgraduate trainee\b|\bapprentice(?:ship)?\b|تدريب عملي|تدريب داخلي/i.test(text)) return "internship";
+  if (/\bhackathon\b|\bbuildathon\b|هاكاثون/i.test(text)) return "hackathon";
+  if (/\bcompetition\b|\bchallenge\b|\bcontest\b|مسابقة|تحدي/i.test(text)) return "competition";
+  if (types.includes("event") || /\bconference\b|\bsummit\b|\bmeetup\b|\bworkshop\b|\btech talk\b|\bnetworking event\b|مؤتمر|قمة|ورشة/i.test(text)) return "event";
+  if (/\bcourse\b|\bbootcamp\b|\btraining program\b|دورة|برنامج تدريبي/i.test(text)) return "course";
   if (types.includes("jobposting") || /\bjob opening\b|\bjunior (?:developer|engineer)\b/i.test(text)) return "job";
   return "program";
 }
@@ -472,22 +497,32 @@ function labelledDate(
   labels: string,
   defaultTime: string,
 ): { at: string; raw: string; precision: "date" | "datetime" } | null {
-  const match = new RegExp(`(?:${labels})[^\\n.!?]{0,100}?(${DATE_FRAGMENT})`, "i").exec(text);
+  const match = new RegExp(`(?:${labels})[^\\n.!?]{0,100}?(${DATE_FRAGMENT})`, "i").exec(text) ??
+    new RegExp(`(${DATE_FRAGMENT})[^\\n.!?]{0,80}?(?:${labels})`, "i").exec(text);
   if (!match) return null;
   const raw = cleanText(match[1], 120);
   const at = parseDubaiDate(raw, new Date(), defaultTime);
   return at ? { at, raw, precision: datePrecision(raw) } : null;
 }
 
-function firstDateInTitle(title: string): { at: string; raw: string; precision: "date" | "datetime" } | null {
-  const range = /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s*[-–]\s*\d{1,2}(?:st|nd|rd|th)?[,]?\s+(\d{4})\b/i.exec(title);
-  const match = range
-    ? `${range[1]} ${range[2]}, ${range[3]}`
-    : new RegExp(DATE_FRAGMENT, "i").exec(title)?.[0];
-  if (!match) return null;
-  const raw = cleanText(match, 120);
-  const at = parseDubaiDate(raw, new Date(), "23:59");
-  return at ? { at, raw, precision: datePrecision(raw) } : null;
+function firstListedDate(
+  text: string,
+  checkedAt: Date,
+): { at: string; raw: string; precision: "date" | "datetime" } | null {
+  const possibleDates: string[] = [];
+  for (const match of text.matchAll(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s*[-–]\s*\d{1,2}(?:st|nd|rd|th)?[,]?\s+(\d{4})\b/gi)) {
+    possibleDates.push(`${match[1]} ${match[2]}, ${match[3]}`);
+  }
+  for (const match of text.matchAll(/\b(\d{1,2})\s*[-–]\s*\d{1,2}\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{4})\b/gi)) {
+    possibleDates.push(`${match[1]} ${match[2]} ${match[3]}`);
+  }
+  for (const match of text.matchAll(new RegExp(DATE_FRAGMENT, "gi"))) possibleDates.push(match[0]);
+  for (const possible of possibleDates) {
+    const raw = cleanText(possible, 120);
+    const at = parseDubaiDate(raw, checkedAt, "23:59");
+    if (at) return { at, raw, precision: datePrecision(raw) };
+  }
+  return null;
 }
 
 function schemaOrganization(schema: Record<string, unknown> | null): string {
@@ -514,7 +549,7 @@ function schemaLocation(schema: Record<string, unknown> | null): string {
 }
 
 function textLocation(text: string): string {
-  const cities = [...text.matchAll(/\b(?:Abu Dhabi|Dubai|Sharjah|Ajman|Fujairah|Ras Al Khaimah|Umm Al Quwain|Al Ain|United Arab Emirates|UAE)\b/gi)]
+  const cities = [...text.matchAll(/\b(?:Abu Dhabi|Dubai|Sharjah|Ajman|Fujairah|Ras Al Khaimah|Umm Al Quwain|Al Ain|United Arab Emirates|UAE)\b|الإمارات|أبو\s?ظبي|دبي|الشارقة|عجمان|الفجيرة|رأس الخيمة|أم القيوين|العين/gi)]
     .map((match) => match[0]);
   if (cities.length > 0) return [...new Set(cities.map((city) => city.replace(/^uae$/i, "UAE")))].slice(0, 3).join(", ");
   if (REMOTE_ACCESS.test(text)) return "Online / accessible from the UAE";
@@ -576,7 +611,7 @@ function recommendationFor(
 
 function cleanSearchTitle(value: unknown): string {
   return cleanSearchText(value, 220)
-    .replace(/^home\s*[|–—-]\s*/i, "")
+    .replace(/^(?:home|homepage)\s*[|–—-]\s*/i, "")
     .replace(/\s*[|–—-]\s*(?:LinkedIn|Instagram|X|Twitter|Eventbrite|Meetup|Devpost)\s*$/i, "")
     .trim();
 }
@@ -611,15 +646,18 @@ export function candidateFromBraveResult(
   if (url.protocol !== "https:" || url.username || url.password) return null;
 
   const searchTitle = cleanSearchTitle(result.title);
-  if (ARTICLE_TITLE.test(searchTitle)) return null;
   const text = resultText(result);
   const primaryText = primaryResultText(result);
   const labelledFactText = cleanSearchText([
     primaryText,
     ...strings(result.extra_snippets).slice(0, 2),
   ].join("\n"), 6_000);
-  if (!text || !primaryText || COMPLETION_OR_NEWS.test(primaryText) || FINISHED_SIGNAL.test(primaryText) || NON_OPPORTUNITY_LISTING.test(primaryText)) return null;
   const schema = firstSchema(result, /event|jobposting|course|educationaloccupationalprogram/);
+  const structuredOrganization = schemaOrganization(schema);
+  const platform = sourcePlatform(url);
+  const evidence = evidenceLevel(url, structuredOrganization);
+  if (ARTICLE_TITLE.test(searchTitle) && evidence !== "official") return null;
+  if (!text || !primaryText || COMPLETION_OR_NEWS.test(primaryText) || FINISHED_SIGNAL.test(primaryText) || NON_OPPORTUNITY_LISTING.test(primaryText)) return null;
   if (!schema && (!OPPORTUNITY_SIGNAL.test(primaryText) || !RELEVANT_TECH.test(primaryText))) return null;
   if (!UAE_ACCESS.test(primaryText) && !REMOTE_ACCESS.test(primaryText) && !PRIORITY_ORGANIZATION.test(primaryText)) return null;
 
@@ -633,14 +671,13 @@ export function candidateFromBraveResult(
     labelledDate(labelledFactText, "deadline|apply by|applications? close|submissions? close|closing date|valid through", "23:59");
   const eventDate = parseKnownDate(schema?.startDate) ??
     labelledDate(primaryText, "event date|starts?|date", "23:59") ??
-    (category === "event" ? firstDateInTitle(searchTitle) : null);
+    (["event", "hackathon", "competition"].includes(category)
+      ? firstListedDate(`${searchTitle}\n${primaryText}`, checkedAt)
+      : null);
   if (deadline && new Date(deadline.at) < checkedAt) return null;
   if (eventDate && new Date(eventDate.at) < checkedAt) return null;
 
   const profile = asRecord(result.profile);
-  const structuredOrganization = schemaOrganization(schema);
-  const platform = sourcePlatform(url);
-  const evidence = evidenceLevel(url, structuredOrganization);
   const organization = cleanSearchText(
     structuredOrganization || (evidence === "official" ? profile?.long_name || profile?.name : ""),
     160,
@@ -756,5 +793,6 @@ export function shouldNotifyDiscoveryCandidate(
   const eventIsFuture = candidate.eventAt ? new Date(candidate.eventAt) >= checkedAt : false;
   if (!deadlineIsFuture && !eventIsFuture) return false;
   if (details.evidence_level === "official") return true;
-  return details.listing_status === "open";
+  if (details.evidence_level === "aggregator") return true;
+  return details.evidence_level === "social_lead" && details.fit_score >= 60;
 }

@@ -469,6 +469,12 @@ export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow):
     escapeHtml(meta),
   ];
 
+  if (details?.evidence_level === "social_lead") {
+    lines.push("<b>Source check:</b> Public post; official page not confirmed");
+  } else if (details?.evidence_level === "aggregator") {
+    lines.push("<b>Source check:</b> Platform listing; organizer page not confirmed");
+  }
+
   const summary = discoveryText(details?.summary, 320);
   if (summary && !/^the search result did not provide/i.test(summary)) {
     lines.push("", escapeHtml(summary));

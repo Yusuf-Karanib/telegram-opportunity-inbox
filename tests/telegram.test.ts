@@ -164,6 +164,15 @@ test("discovery cards are compact and only show useful facts", () => {
   assert.doesNotMatch(message, /Evidence|Found through|Official source|Checked/);
   assert.doesNotMatch(message, /Nothing is added|Not set|Not stated|Unclear/);
   assert.ok(message.length < 1_200);
+  const platformMessage = formatDiscoveryCandidate({
+    ...row,
+    decision_details: {
+      ...row.decision_details!,
+      evidence_level: "aggregator",
+      official_source_url: null,
+    },
+  });
+  assert.match(platformMessage, /Source check:<\/b> Platform listing; organizer page not confirmed/);
   const markup = discoveryCandidateReplyMarkup(row) as {
     inline_keyboard: Array<Array<{ text: string; url?: string }>>;
   };

@@ -4,7 +4,7 @@ A private Telegram bot for meaningful UAE-accessible jobs, internships, programs
 
 Paste or forward opportunity text. The bot creates a review draft, extracts only supported details, warns about likely duplicates, and waits for confirmation before saving. Unknown values stay empty.
 
-The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and fourteen web-search groups covering UAE universities, research labs, startup hubs, technical communities, early-career employers, public LinkedIn posts, X, Instagram, Devpost, Meetup, Eventbrite, F6S, and globally accessible programs. Use `/discover` to check immediately.
+The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and fifteen English and Arabic web-search groups covering UAE government and university sites, research labs, startup hubs, technical communities, early-career employers, public LinkedIn posts, X, Instagram, Devpost, Meetup, Eventbrite, F6S, Luma, UAE hackathon platforms, and globally accessible programs. Use `/discover` to check immediately.
 
 When a scheduled search finds nothing new, the bot sends one short confirmation instead of staying silent.
 
@@ -44,7 +44,7 @@ The scout filters out expired or closed listings, articles, guides, technical ne
 - Brave Search API for broad public web and social-page discovery
 - Rule-based verification and extraction; no LLM API required
 
-The fourteen searches run twice daily, or about 840 searches in a 30-day month. This stays within the current 1,000-request monthly credit with limited room for manual `/discover` runs. Check Brave's current plan and credit requirements before enabling it. Search results are provided by [Brave Search API](https://brave.com/search/api/).
+The fifteen searches run twice daily, or about 900 searches in a 30-day month and 930 in a 31-day month. This stays within the current 1,000-request monthly credit, but leaves room for only a few manual `/discover` runs. Check Brave's current plan and credit requirements before enabling it. Search results are provided by [Brave Search API](https://brave.com/search/api/).
 
 The package reuses the safe deployment pattern from the AI News Inbox but is a separate bot. Telegram allows only one webhook per bot token, so do not reuse the AI News bot token unless both products are deliberately merged later.
 

@@ -22,7 +22,7 @@
 - Upcoming, overdue, waiting, and archived views
 - Deadline, event, manual, next-action, and course-inactivity reminders
 - Telegram HTML escaping and callback length
-- Fourteen search groups covering official sites, universities, startup hubs, communities, early-career roles, LinkedIn, X, Instagram, Devpost, Meetup, Eventbrite, and F6S
+- Fifteen English and Arabic search groups covering official sites, universities, startup hubs, communities, early-career roles, LinkedIn, X, Instagram, Devpost, Meetup, Eventbrite, F6S, Luma, and UAE hackathon platforms
 - Compact discovery cards that omit scores, repeated warnings, evidence prose, and unknown fields
 - Twice-daily 7:00 AM and 7:00 PM Dubai schedule
 - Static checks for private database access, webhook authentication, update replay protection, and reminder claims

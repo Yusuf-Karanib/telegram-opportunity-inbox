@@ -64,7 +64,7 @@ For a brand-new installation, continue below.
 
 Paste the key only into the secure prompt. The script stores it directly as a Supabase secret and does not keep it in this folder.
 
-The scout uses fourteen searches at 7:00 AM and fourteen at 7:00 PM UAE time. It can find public LinkedIn, X, and Instagram pages through Brave's web index, but it cannot read private or unindexed posts.
+The scout uses fifteen searches at 7:00 AM and fifteen at 7:00 PM UAE time. One search is in Arabic. It can find public LinkedIn, X, Instagram, Luma, and UAE hackathon pages through Brave's web index, but it cannot read private or unindexed posts.
 
 ## 5. Create the private Telegram secrets
 

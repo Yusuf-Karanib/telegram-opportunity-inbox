@@ -79,7 +79,7 @@ async function searchBrave(
       // Brave's search-country enum does not include the UAE. Search globally,
       // then use the UAE terms and location headers below to keep local focus.
       country: "ALL",
-      search_lang: "en",
+      search_lang: search.searchLanguage ?? "en",
       safesearch: "strict",
       freshness: "py",
       result_filter: "web",

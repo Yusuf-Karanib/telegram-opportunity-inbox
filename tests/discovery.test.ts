@@ -103,9 +103,9 @@ test("rejects a promo-code guide even when it mentions real technology events", 
   );
 });
 
-test("builds fourteen broad searches including public social platforms and UAE ecosystems", () => {
+test("builds fifteen broad searches including Arabic, social, and UAE ecosystem sources", () => {
   const searches = opportunitySearchQueries(new Date("2026-10-08T08:00:00Z"));
-  assert.equal(searches.length, 14);
+  assert.equal(searches.length, 15);
   for (const search of searches) {
     assert.ok(search.query.length <= 600);
     assert.ok(search.query.trim().split(/\s+/).length <= 75);
@@ -115,11 +115,14 @@ test("builds fourteen broad searches including public social platforms and UAE e
   assert.match(combined, /site:x[.]com/);
   assert.match(combined, /site:instagram[.]com/);
   assert.match(combined, /site:devpost[.]com/);
+  assert.match(combined, /site:lu[.]ma/);
   assert.match(combined, /MBZUAI/);
   assert.match(combined, /Khalifa University/);
   assert.match(combined, /DIFC Innovation Hub/);
   assert.match(combined, /Microsoft Reactor/);
   assert.match(combined, /early career/);
+  assert.match(combined, /الذكاء الاصطناعي/);
+  assert.equal(searches.find((search) => search.key === "uae-arabic-opportunities")?.searchLanguage, "ar");
   assert.match(combined, /2027/);
 });
 
@@ -238,4 +241,69 @@ test("notifies an official open application even when no deadline is published",
   assert.equal(candidate.decisionDetails.evidence_level, "official");
   assert.equal(candidate.decisionDetails.listing_status, "open");
   assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), true);
+});
+
+test("recognizes UAE government and university domains as official sources", () => {
+  const government = candidateFromBraveResult({
+    title: "ATRC Announces Advanced AI Challenge",
+    url: "https://www.atrc.gov.ae/news/advanced-ai-challenge",
+    description: "Applications are open for a UAE AI and robotics competition with mentors. Applications close 30 November 2026.",
+  }, new Date("2026-10-12T08:00:00Z"));
+  const university = candidateFromBraveResult({
+    title: "Applied AI Research Workshop 20 November 2026",
+    url: "https://events.example.ac.ae/applied-ai-workshop",
+    description: "Register now for an applied AI research workshop in Abu Dhabi with technical teams.",
+  }, new Date("2026-10-12T08:00:00Z"));
+  assert.ok(government);
+  assert.ok(university);
+  assert.equal(government.decisionDetails.evidence_level, "official");
+  assert.equal(university.decisionDetails.evidence_level, "official");
+  assert.equal(shouldNotifyDiscoveryCandidate(government, new Date("2026-10-12T08:00:00Z")), true);
+});
+
+test("finds a future date range on an official hackathon page", () => {
+  const candidate = candidateFromBraveResult({
+    title: "Homepage - NASA Space Apps Challenge 2026 â UAE",
+    url: "https://nasaspaceapps.ae/",
+    description: "Registration now open across the UAE for an AI and data hackathon on Nov 14–15, 2026. Free to join.",
+  }, new Date("2026-10-12T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.name, "NASA Space Apps Challenge 2026 — UAE");
+  assert.equal(candidate.category, "hackathon");
+  assert.equal(candidate.eventRaw, "Nov 14, 2026");
+  assert.equal(candidate.decisionDetails.evidence_level, "official");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-12T08:00:00Z")), true);
+});
+
+test("allows dated platform and strong social leads while marking them unverified", () => {
+  const platform = candidateFromBraveResult({
+    title: "Dubai Applied AI Workshop 20 November 2026",
+    url: "https://lu.ma/applied-ai-dubai",
+    description: "A public AI workshop in Dubai with developers, project teams, and networking.",
+  }, new Date("2026-10-12T08:00:00Z"));
+  const social = candidateFromBraveResult({
+    title: "UAE Robotics Hackathon 22 November 2026 | LinkedIn",
+    url: "https://www.linkedin.com/posts/example-robotics-hackathon",
+    description: "A UAE robotics hackathon with team projects, mentorship, and technical networking.",
+  }, new Date("2026-10-12T08:00:00Z"));
+  assert.ok(platform);
+  assert.ok(social);
+  assert.equal(platform.decisionDetails.listing_status, "unverified");
+  assert.equal(social.decisionDetails.listing_status, "unverified");
+  assert.equal(shouldNotifyDiscoveryCandidate(platform, new Date("2026-10-12T08:00:00Z")), true);
+  assert.equal(shouldNotifyDiscoveryCandidate(social, new Date("2026-10-12T08:00:00Z")), true);
+});
+
+test("recognizes an Arabic UAE opportunity without inventing a date", () => {
+  const candidate = candidateFromBraveResult({
+    title: "هاكاثون الذكاء الاصطناعي في الإمارات",
+    url: "https://youth.gov.ae/ar/ai-hackathon",
+    description: "فتح باب التسجيل الآن في هاكاثون الذكاء الاصطناعي والبرمجة في دبي، مع فرق وإرشاد تقني.",
+  }, new Date("2026-10-12T08:00:00Z"));
+  assert.ok(candidate);
+  assert.equal(candidate.category, "hackathon");
+  assert.equal(candidate.deadlineAt, null);
+  assert.equal(candidate.decisionDetails.listing_status, "open");
+  assert.equal(candidate.decisionDetails.evidence_level, "official");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-12T08:00:00Z")), true);
 });
