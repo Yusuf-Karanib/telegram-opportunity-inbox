@@ -1,12 +1,14 @@
 # Verification
 
-Checked on 12 October 2026.
+Checked on 15 October 2026.
 
-- 71 of 71 automated tests passed.
+- 72 of 72 automated tests passed.
 - Classification tests cover CVE bulletins, technical news, completion posts, unclear items, competitions, and cybersecurity hackathons.
-- Broad discovery tests cover official UAE government and university pages, English and Arabic results, public social leads, fifteen web-search groups, startup hubs, communities, early-career roles, platform listings, third-party articles, expired events, date ranges, source quality, and compact cards.
+- Broad discovery tests cover official UAE government and university pages, English and Arabic results, public social leads, fifteen web-search groups, direct official event sites, startup hubs, communities, early-career roles, platform listings, third-party articles, expired events, date ranges, source quality, and compact cards.
 - The new schedule is 7:00 AM and 7:00 PM UAE time.
+- Every morning checks page one; evening runs rotate across pages two through four, avoiding repeated top results without increasing API usage.
 - Empty scheduled runs send a one-line confirmation; manual `/discover` calls do not duplicate it.
+- Links dismissed by the automatic quality reset can be reconsidered by the stricter current filters; Yusuf's own dismissals remain blocked.
 - All 9 PowerShell setup scripts parsed successfully.
 - The locked Supabase CLI version is 2.116.0 and its deploy options were verified.
 - No real Telegram or Supabase credentials are stored in this package.

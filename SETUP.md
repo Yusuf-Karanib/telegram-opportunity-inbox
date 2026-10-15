@@ -64,7 +64,7 @@ For a brand-new installation, continue below.
 
 Paste the key only into the secure prompt. The script stores it directly as a Supabase secret and does not keep it in this folder.
 
-The scout uses fifteen searches at 7:00 AM and fifteen at 7:00 PM UAE time. One search is in Arabic. It can find public LinkedIn, X, Instagram, Luma, and UAE hackathon pages through Brave's web index, but it cannot read private or unindexed posts.
+The scout uses fifteen searches at 7:00 AM and fifteen at 7:00 PM UAE time. Every morning checks page 1; evening runs rotate through pages 2, 3, and 4. One search is in Arabic. It can find public LinkedIn, X, Instagram, Luma, and UAE hackathon pages through Brave's web index, but it cannot read private or unindexed posts.
 
 ## 5. Create the private Telegram secrets
 
@@ -140,7 +140,7 @@ The bot must show a draft with status **Saved only — not applied or registered
 
 Then send `AWS Security Bulletin CVE-2026-12345`. It must classify the message as a security alert and must not show a Save button.
 
-Send `/discover` to run the full scout immediately. It also runs automatically at 7:00 AM and 7:00 PM UAE time.
+Send `/discover` to run the full page-one scout immediately. It also runs automatically at 7:00 AM and 7:00 PM UAE time.
 
 Run local checks with:
 

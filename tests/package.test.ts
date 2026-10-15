@@ -120,12 +120,17 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discovery, /api[.]search[.]brave[.]com/);
   assert.match(discovery, /country:\s*["']ALL["']/);
   assert.match(discovery, /freshness:\s*["']py["']/);
+  assert.match(discovery, /offset:\s*String\(page\)/);
+  assert.match(discovery, /requestedSearchPage \?\? opportunitySearchPage/);
+  assert.match(bot, /search_page:\s*0/);
   assert.doesNotMatch(discovery, /country:\s*["']AE["']/);
   assert.match(discovery, /MAX_RUN_MESSAGES = 5/);
+  assert.match(discovery, /QUALITY_RESET_MESSAGE/);
+  assert.match(discovery, /upsert\(values, \{ onConflict: ["']source_url["'] \}\)/);
   assert.match(discoveryCleanupMigration, /where status in \('new', 'failed'\)/);
   assert.match(emptyNoticeMigration, /'0 3,15 \* \* \*'/);
   assert.match(emptyNoticeMigration, /"notify_empty": true/);
-  assert.match(discovery, /No new verified opportunities found/);
+  assert.match(discovery, /useful matches were already seen/);
   assert.match(discovery, /emptyNoticeSent/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);

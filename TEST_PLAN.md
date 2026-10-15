@@ -25,6 +25,7 @@
 - Fifteen English and Arabic search groups covering official sites, universities, startup hubs, communities, early-career roles, LinkedIn, X, Instagram, Devpost, Meetup, Eventbrite, F6S, Luma, and UAE hackathon platforms
 - Compact discovery cards that omit scores, repeated warnings, evidence prose, and unknown fields
 - Twice-daily 7:00 AM and 7:00 PM Dubai schedule
+- Morning page-one search plus evening rotation across pages two through four without extra requests
 - Static checks for private database access, webhook authentication, update replay protection, and reminder claims
 
 ## Manual after deployment

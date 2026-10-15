@@ -3,6 +3,7 @@ import {
   candidateFromBraveResult,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
+  opportunitySearchPage,
   opportunitySearchQueries,
   shouldNotifyDiscoveryCandidate,
   type BraveWebResult,
@@ -49,6 +50,17 @@ interface CandidateClaim {
   reason: string;
 }
 
+interface ExistingCandidate {
+  status: string;
+  error_message: string | null;
+}
+
+const QUALITY_RESET_MESSAGE = "Cleared during the discovery quality reset.";
+
+function blocksRediscovery(row: ExistingCandidate): boolean {
+  return row.status !== "dismissed" || row.error_message !== QUALITY_RESET_MESSAGE;
+}
+
 async function fetchOfficialPage(url: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -69,6 +81,7 @@ async function fetchOfficialPage(url: string): Promise<string> {
 async function searchBrave(
   search: OpportunitySearchQuery,
   apiKey: string,
+  page: 0 | 1 | 2 | 3,
 ): Promise<BraveWebResult[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -76,6 +89,7 @@ async function searchBrave(
     const parameters = new URLSearchParams({
       q: search.query,
       count: "20",
+      offset: String(page),
       // Brave's search-country enum does not include the UAE. Search globally,
       // then use the UAE terms and location headers below to keep local focus.
       country: "ALL",
@@ -123,17 +137,17 @@ async function candidateAlreadyExists(
   candidate: DiscoveryCandidateInput,
 ): Promise<boolean> {
   const existing = await database.from("opportunity_discovery_candidates")
-    .select("id").eq("source_url", candidate.sourceUrl).maybeSingle();
+    .select("status,error_message").eq("source_url", candidate.sourceUrl).maybeSingle();
   if (existing.error) throw new Error(existing.error.message);
-  if (existing.data) return true;
+  if (existing.data && blocksRediscovery(existing.data as ExistingCandidate)) return true;
   let existingNameQuery = database.from("opportunity_discovery_candidates")
-    .select("id").eq("name", candidate.name);
+    .select("status,error_message").eq("name", candidate.name);
   if (candidate.organization !== "Not stated") {
     existingNameQuery = existingNameQuery.eq("organization", candidate.organization);
   }
-  const existingName = await existingNameQuery.limit(1);
+  const existingName = await existingNameQuery.limit(10);
   if (existingName.error) throw new Error(existingName.error.message);
-  if ((existingName.data?.length ?? 0) > 0) return true;
+  if ((existingName.data ?? []).some((row) => blocksRediscovery(row as ExistingCandidate))) return true;
   const saved = await database.from("opportunities").select("id")
     .eq("source_url", candidate.sourceUrl).maybeSingle();
   if (saved.error) throw new Error(saved.error.message);
@@ -171,9 +185,17 @@ async function insertCandidate(
     notes: candidate.notes,
     decision_details: candidate.decisionDetails,
     checked_at: now.toISOString(),
+    status: "new",
+    attempt_count: 0,
+    claimed_at: null,
+    sent_at: null,
+    telegram_message_id: null,
+    error_message: null,
+    opportunity_id: null,
+    updated_at: now.toISOString(),
   };
   const inserted = await database.from("opportunity_discovery_candidates")
-    .insert(values).select("*").single();
+    .upsert(values, { onConflict: "source_url" }).select("*").single();
   if (inserted.error?.code === "23505") return null;
   if (inserted.error) throw new Error(inserted.error.message);
   return inserted.data as OpportunityDiscoveryCandidateRow;
@@ -246,9 +268,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
 
   let notifyEmpty = false;
+  let requestedSearchPage: 0 | 1 | 2 | 3 | null = null;
   try {
     const body = await request.json() as Record<string, unknown>;
     notifyEmpty = body?.notify_empty === true;
+    const page = Number(body?.search_page);
+    if (Number.isInteger(page) && page >= 0 && page <= 3) {
+      requestedSearchPage = page as 0 | 1 | 2 | 3;
+    }
   } catch {
     // An empty or malformed body does not enable scheduled notifications.
   }
@@ -305,13 +332,14 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const braveApiKey = Deno.env.get("OPPORTUNITY_BRAVE_SEARCH_API_KEY")?.trim() ?? "";
   const searches = opportunitySearchQueries(now);
+  const searchPage = requestedSearchPage ?? opportunitySearchPage(now);
   let queriesRun = 0;
   if (!braveApiKey) {
     sourceErrors.push("Broad web and social search is not configured");
   } else {
     const searchResults = await Promise.allSettled(searches.map(async (search) => ({
       search,
-      results: await searchBrave(search, braveApiKey),
+      results: await searchBrave(search, braveApiKey, searchPage),
     })));
     const candidates = new Map<string, DiscoveryCandidateInput>();
     for (const result of searchResults) {
@@ -364,7 +392,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }).format(now));
     const runLabel = dubaiHour < 12 ? "7 AM" : "7 PM";
     const message = sourceErrors.length === 0
-      ? `${runLabel} search complete. No new verified opportunities found.`
+      ? duplicates > 0
+        ? `${runLabel} search complete: checked ${checked} results. ${duplicates} useful matches were already seen; no new cards.`
+        : `${runLabel} search complete: checked ${checked} results. No new useful opportunities found.`
       : `${runLabel} search finished with ${sourceErrors.length} source errors. I will retry at the next run.`;
     try {
       await sendText(message);
@@ -382,6 +412,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     duplicates,
     inserted: insertedThisRun,
     queriesRun,
+    searchPage,
     broadSearchConfigured: Boolean(braveApiKey),
     emptyNoticeSent,
     sourceErrors,

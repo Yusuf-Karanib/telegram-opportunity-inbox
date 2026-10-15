@@ -4,6 +4,7 @@ import {
   candidateFromBraveResult,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
+  opportunitySearchPage,
   opportunitySearchQueries,
   shouldNotifyDiscoveryCandidate,
 } from "../supabase/functions/_shared/discovery.ts";
@@ -116,6 +117,9 @@ test("builds fifteen broad searches including Arabic, social, and UAE ecosystem 
   assert.match(combined, /site:instagram[.]com/);
   assert.match(combined, /site:devpost[.]com/);
   assert.match(combined, /site:lu[.]ma/);
+  assert.match(combined, /site:nasaspaceapps[.]ae/);
+  assert.match(combined, /site:aiforgood[.]itu[.]int/);
+  assert.match(combined, /site:regulationinnovation[.]org/);
   assert.match(combined, /MBZUAI/);
   assert.match(combined, /Khalifa University/);
   assert.match(combined, /DIFC Innovation Hub/);
@@ -124,6 +128,13 @@ test("builds fifteen broad searches including Arabic, social, and UAE ecosystem 
   assert.match(combined, /الذكاء الاصطناعي/);
   assert.equal(searches.find((search) => search.key === "uae-arabic-opportunities")?.searchLanguage, "ar");
   assert.match(combined, /2027/);
+});
+
+test("checks the first page every morning and rotates three deeper evening pages", () => {
+  assert.equal(opportunitySearchPage(new Date("2026-10-15T03:00:00Z")), 0);
+  assert.equal(opportunitySearchPage(new Date("2026-10-15T15:00:00Z")), 2);
+  assert.equal(opportunitySearchPage(new Date("2026-10-16T15:00:00Z")), 3);
+  assert.equal(opportunitySearchPage(new Date("2026-10-17T15:00:00Z")), 1);
 });
 
 test("turns an official indexed program into a detailed decision card", () => {

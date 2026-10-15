@@ -4,7 +4,7 @@ A private Telegram bot for meaningful UAE-accessible jobs, internships, programs
 
 Paste or forward opportunity text. The bot creates a review draft, extracts only supported details, warns about likely duplicates, and waits for confirmation before saving. Unknown values stay empty.
 
-The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and fifteen English and Arabic web-search groups covering UAE government and university sites, research labs, startup hubs, technical communities, early-career employers, public LinkedIn posts, X, Instagram, Devpost, Meetup, Eventbrite, F6S, Luma, UAE hackathon platforms, and globally accessible programs. Use `/discover` to check immediately.
+The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and fifteen English and Arabic web-search groups covering UAE government and university sites, research labs, startup hubs, technical communities, early-career employers, public social pages, opportunity platforms, and direct official event sites such as NASA Space Apps UAE, AI for Good, ChallengeON, Dubai AI Festival, Global AI Show, and Odoo. Every morning checks the first result page; evening runs rotate through pages 2, 3, and 4. This covers up to 80 results per search group over three days without extra API requests. Use `/discover` to check page 1 immediately.
 
 When a scheduled search finds nothing new, the bot sends one short confirmation instead of staying silent.
 

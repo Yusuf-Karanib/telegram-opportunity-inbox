@@ -192,7 +192,7 @@ async function runDiscoveryNow(): Promise<Record<string, unknown>> {
         "content-type": "application/json",
         "x-cron-secret": requiredEnv("OPPORTUNITY_CRON_SECRET"),
       },
-      body: "{}",
+      body: JSON.stringify({ search_page: 0 }),
     });
     const result = await response.json() as Record<string, unknown>;
     if (!response.ok) throw new Error(cleanText(result.error || `Discovery HTTP ${response.status}`, 300));
@@ -617,7 +617,10 @@ async function handleCommand(
     const sent = Number(result.sent ?? 0);
     const checked = Number(result.checked ?? 0);
     const inserted = Number(result.inserted ?? 0);
+    const relevant = Number(result.relevant ?? 0);
+    const duplicates = Number(result.duplicates ?? 0);
     const queriesRun = Number(result.queriesRun ?? 0);
+    const searchPage = Number(result.searchPage ?? 0) + 1;
     const broadSearchConfigured = result.broadSearchConfigured === true;
     const sourceErrors = Array.isArray(result.sourceErrors)
       ? result.sourceErrors.map((value) => cleanText(value, 300)).filter(Boolean)
@@ -630,8 +633,8 @@ async function handleCommand(
       );
     } else {
       await sendText(errors > 0
-        ? `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}. ${errors} source checks failed.${firstWebError ? `\n\nProblem: ${firstWebError.replace(/^Web search:\s*/, "")}` : ""}`
-        : `Search finished across ${queriesRun} web/social searches. Checked ${checked} results, saved ${inserted} new candidates, and sent ${sent}.`);
+        ? `Search page ${searchPage} finished across ${queriesRun} web/social searches. Checked ${checked} results, found ${relevant} useful matches, saved ${inserted}, and sent ${sent}. ${errors} source checks failed.${firstWebError ? `\n\nProblem: ${firstWebError.replace(/^Web search:\s*/, "")}` : ""}`
+        : `Search page ${searchPage} finished across ${queriesRun} web/social searches. Checked ${checked} results, found ${relevant} useful matches, saved ${inserted}, sent ${sent}, and skipped ${duplicates} already seen.`);
     }
     return;
   }

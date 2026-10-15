@@ -241,7 +241,7 @@ const MEANINGFUL_AFFILIATION = /\b(?:mentor(?:ship|ing)?|cohort|fellowship|resea
 const COMPLETION_OR_NEWS = /\b(?:cve-\d|security bulletin|vulnerability|patch advisory|has completed|successfully completed|graduated from|celebrating our|congratulations to|product update|release notes)\b/i;
 const ARTICLE_TITLE = /\b(?:salary|guide|report|news|roundup|landscape|recap|highlights?|launches|announces|shaping the future)\b/i;
 const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|g42|core42|khalifa university|nyu abu dhabi|uae university|american university of sharjah|startad|sheraa|in5|difc innovation hub|microsoft reactor|aws user group)\b/i;
-const AGGREGATOR_HOSTS = new Set(["devpost.com", "meetup.com", "eventbrite.com", "f6s.com", "lu.ma", "hackathons.ae"]);
+const AGGREGATOR_HOSTS = new Set(["devpost.com", "meetup.com", "eventbrite.com", "f6s.com", "lu.ma", "hackathons.ae", "cyberelites.ae"]);
 const KNOWN_OFFICIAL_HOSTS = new Set([
   "42abudhabi.ae",
   "mbzuai.ac.ae",
@@ -278,6 +278,8 @@ const KNOWN_OFFICIAL_HOSTS = new Set([
   "itu.int",
   "odoo.com",
   "volunteers.ae",
+  "regulationinnovation.org",
+  "digitransformationsummit.com",
 ]);
 
 const DATE_FRAGMENT = String.raw`(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}(?::\d{2})?(?:\s*(?:am|pm))?)?|\d{1,2}[\/-]\d{1,2}[\/-]\d{4}(?:\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?|(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?[,]?\s+\d{4}(?:\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?)`;
@@ -306,7 +308,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "priority-organizations",
-      query: `("42 Abu Dhabi" OR MBZUAI OR Hub71 OR ATRC OR TII OR G42 OR "Dubai Future Foundation" OR MBRIF OR "UAE Space Agency") (apply OR register OR program OR event OR internship OR challenge) ${years}`,
+      query: `("42 Abu Dhabi" OR MBZUAI OR Hub71 OR ATRC OR TII OR G42 OR "Dubai Future Foundation" OR MBRIF OR "UAE Space Agency" OR "NASA Space Apps" OR "AI for Good" OR Odoo) (apply OR register OR program OR event OR internship OR challenge) ${years}`,
     },
     {
       key: "linkedin-public-posts",
@@ -322,7 +324,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "opportunity-platforms",
-      query: `(site:devpost.com OR site:meetup.com OR site:eventbrite.com OR site:f6s.com OR site:lu.ma OR site:hackathons.ae) ${uae} ${topics} ${years}`,
+      query: `(site:devpost.com OR site:meetup.com OR site:eventbrite.com OR site:f6s.com OR site:lu.ma OR site:hackathons.ae OR site:nasaspaceapps.ae OR site:aiforgood.itu.int OR site:challengeon.atrc.ae OR site:dubaiaifestival.com OR site:globalaishow.com OR site:odoo.com OR site:regulationinnovation.org) ${uae} ${topics} (apply OR register OR tickets OR challenge OR event) ${years}`,
     },
     {
       key: "global-accessible",
@@ -350,6 +352,23 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
       searchLanguage: "ar",
     },
   ];
+}
+
+export function opportunitySearchPage(checkedAt = new Date()): 0 | 1 | 2 | 3 {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Dubai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(checkedAt);
+  const value = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const dubaiHour = value("hour");
+  if (dubaiHour < 12) return 0;
+  const dayIndex = Math.floor(Date.UTC(value("year"), value("month") - 1, value("day")) / 86_400_000);
+  return (1 + ((dayIndex + 2) % 3)) as 1 | 2 | 3;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
