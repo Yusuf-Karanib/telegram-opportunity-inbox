@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  aiNexusCandidatesFromPage,
   candidateFromBraveResult,
+  candidateFromOfficialPageHtml,
+  challengeOnCandidatesFromApi,
+  directListingLinks,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
   opportunitySearchPage,
   opportunitySearchQueries,
   shouldNotifyDiscoveryCandidate,
+  type DirectListingSource,
 } from "../supabase/functions/_shared/discovery.ts";
 
 function nextPage(pageProps: Record<string, unknown>): string {
@@ -127,7 +132,118 @@ test("builds fifteen broad searches including Arabic, social, and UAE ecosystem 
   assert.match(combined, /early career/);
   assert.match(combined, /الذكاء الاصطناعي/);
   assert.equal(searches.find((search) => search.key === "uae-arabic-opportunities")?.searchLanguage, "ar");
+  assert.equal(searches.find((search) => search.key === "linkedin-public-posts")?.freshness, "pm");
+  assert.equal(searches.find((search) => search.key === "x-public-posts")?.freshness, "pm");
+  assert.equal(searches.find((search) => search.key === "instagram-public-posts")?.freshness, "pm");
   assert.match(combined, /2027/);
+});
+
+test("extracts only allowed official detail links", () => {
+  const source: DirectListingSource = {
+    key: "example",
+    name: "Example",
+    url: "https://example.ae/programs/",
+    organization: "Example",
+    allowedHosts: ["example.ae"],
+    pathPattern: /^\/programs\/[^/]+\/?$/i,
+    anchorTextPattern: /apply|read more/i,
+    maximumLinks: 5,
+  };
+  const html = `
+    <a href="/programs/ai-fellowship/?utm_source=home">Apply now</a>
+    <a href="https://example.ae/programs/robotics">Read more</a>
+    <a href="https://attacker.example/programs/fake">Apply now</a>
+    <a href="/assets/program.pdf">Apply now</a>
+    <a href="/programs/ignored">Overview</a>`;
+  assert.deepEqual(directListingLinks(html, source), [
+    "https://example.ae/programs/ai-fellowship",
+    "https://example.ae/programs/robotics",
+  ]);
+});
+
+test("turns a directly fetched official page into an open opportunity", () => {
+  const html = `<!doctype html><html><head>
+    <meta property="og:title" content="Applied AI Fellowship 2026">
+    <meta name="description" content="Applications are open for an applied AI fellowship in Abu Dhabi.">
+    </head><body><main><h1>Applied AI Fellowship 2026</h1>
+    <p>UAE residents can apply for mentoring and research teams.</p>
+    <p>Applications close November 15, 2026. Free.</p>
+    </main></body></html>`;
+  const candidate = candidateFromOfficialPageHtml(
+    html,
+    "https://www.dubaifuture.ae/applied-ai-fellowship/",
+    "dff",
+    "Dubai Future Foundation",
+    "Dubai Future Foundation",
+    new Date("2026-10-19T08:00:00Z"),
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.sourceName, "Dubai Future Foundation");
+  assert.equal(candidate.decisionDetails.evidence_level, "official");
+  assert.equal(candidate.decisionDetails.listing_status, "open");
+  assert.equal(candidate.deadlineRaw, "November 15, 2026");
+});
+
+test("does not call startup funding a participant cost", () => {
+  const candidate = candidateFromOfficialPageHtml(
+    `<main><h1>Hub71 AI Startup Programme</h1>
+      <p>Applications are open for AI startups in Abu Dhabi.</p>
+      <p>Selected startups receive AED 250,000 in cash support and mentorship.</p>
+    </main>`,
+    "https://www.hub71.com/program/ai-startups",
+    "hub71",
+    "Hub71",
+    "Hub71",
+    new Date("2026-10-19T08:00:00Z"),
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.decisionDetails.cost, "Not stated");
+});
+
+test("reads only public future events with open registration from MBZUAI AI Nexus", () => {
+  const html = `
+    <div class="event-deets-grid">
+      <a data-tab="upcoming" data-target="microbiome">Exploring Human and Planetary Microbiome at Scale</a>
+      <div>November 5, 2026</div><div class="location-cell">MBZUAI, Abu Dhabi</div><div>REGISTRATION OPEN</div>
+    </div>
+    <div class="event-deets-grid">
+      <a data-tab="upcoming" data-target="private">Private AI Roundtable</a>
+      <div>November 8, 2026</div><div class="location-cell">MBZUAI</div><div>INVITE ONLY</div>
+    </div>
+    <section id="microbiome">About this event: AI and genomics research talks and technical networking.</section>`;
+  const candidates = aiNexusCandidatesFromPage(html, new Date("2026-10-19T08:00:00Z"));
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].organization, "MBZUAI");
+  assert.equal(candidates[0].eventRaw, "November 5, 2026");
+  assert.equal(candidates[0].decisionDetails.listing_status, "open");
+});
+
+test("keeps an open ChallengeON technology challenge and rejects expired or school-only ones", () => {
+  const item = (id: string, name: string, slug: string, deadline: string, summary: string) => ({
+    id,
+    attributes: {
+      name,
+      slug,
+      summary,
+      client: "ATRC",
+      status: "in_progress",
+      create_or_join_team_allowed_until: deadline,
+      awards_catchline: "Cash prizes, investment support",
+    },
+    relationships: { communities: { data: [{ type: "communities", id: "1" }] } },
+  });
+  const candidates = challengeOnCandidatesFromApi({
+    data: [
+      item("1", "Nabat TerraPod AI Challenge", "nabat-terrapod", "2026-11-19T20:00:00Z", "Build an AI and robotics solution for the UAE."),
+      item("2", "School AI Challenge", "school-ai", "2026-12-01T20:00:00Z", "For grade 8 school students in Dubai."),
+      item("3", "Expired Robotics Challenge", "expired", "2026-10-01T20:00:00Z", "Build robotics systems in the UAE."),
+    ],
+    included: [{ id: "1", type: "communities", attributes: { name: "University Students and Startups" } }],
+  }, new Date("2026-10-19T08:00:00Z"));
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].name, "Nabat TerraPod AI Challenge");
+  assert.equal(candidates[0].deadlineAt, "2026-11-19T20:00:00.000Z");
+  assert.match(candidates[0].decisionDetails.eligibility, /University Students and Startups/);
 });
 
 test("checks the first page every morning and rotates three deeper evening pages", () => {
@@ -191,6 +307,11 @@ test("rejects completion posts and closed listings from web search", () => {
     url: "https://example.ae/robotics-internship",
     description: "Applications are closed for this UAE robotics internship.",
   }, new Date("2026-10-08T08:00:00Z")), null);
+  assert.equal(candidateFromBraveResult({
+    title: "Hub71 Startup Programme",
+    url: "https://www.hub71.com/program/closed-cohort",
+    description: "Applications for this UAE AI startup programme are currently closed. The application form remains online.",
+  }, new Date("2026-10-19T08:00:00Z")), null);
 });
 
 test("does not notify from third-party articles even when they mention a deadline", () => {

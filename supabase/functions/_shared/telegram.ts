@@ -117,6 +117,13 @@ export async function sendHtml(
   return result.message_id;
 }
 
+export async function deleteMessage(messageId: number): Promise<void> {
+  await telegramCall<boolean>("deleteMessage", {
+    chat_id: requiredEnv("OPPORTUNITY_TELEGRAM_CHAT_ID"),
+    message_id: messageId,
+  });
+}
+
 export async function answerCallback(callbackId: string, text: string): Promise<void> {
   await telegramCall<boolean>("answerCallbackQuery", {
     callback_query_id: callbackId,

@@ -615,27 +615,23 @@ async function handleCommand(
     await sendText("Checking official sites and public web/social results now.", undefined, replyTo);
     const result = await runDiscoveryNow();
     const sent = Number(result.sent ?? 0);
-    const checked = Number(result.checked ?? 0);
+    const checked = Number(result.uniquePagesChecked ?? result.checked ?? 0);
     const inserted = Number(result.inserted ?? 0);
-    const relevant = Number(result.relevant ?? 0);
     const duplicates = Number(result.duplicates ?? 0);
     const queriesRun = Number(result.queriesRun ?? 0);
-    const searchPage = Number(result.searchPage ?? 0) + 1;
+    const officialSourcesChecked = Number(result.officialSourcesChecked ?? 0);
     const broadSearchConfigured = result.broadSearchConfigured === true;
     const sourceErrors = Array.isArray(result.sourceErrors)
       ? result.sourceErrors.map((value) => cleanText(value, 300)).filter(Boolean)
       : [];
     const errors = sourceErrors.length;
-    const firstWebError = sourceErrors.find((value) => value.startsWith("Web search:"));
-    if (!broadSearchConfigured) {
-      await sendText(
-        `Search finished. The three GDG pages were checked, but broad web and social search is not configured yet. Sent ${sent} new opportunities.`,
-      );
-    } else {
-      await sendText(errors > 0
-        ? `Search page ${searchPage} finished across ${queriesRun} web/social searches. Checked ${checked} results, found ${relevant} useful matches, saved ${inserted}, and sent ${sent}. ${errors} source checks failed.${firstWebError ? `\n\nProblem: ${firstWebError.replace(/^Web search:\s*/, "")}` : ""}`
-        : `Search page ${searchPage} finished across ${queriesRun} web/social searches. Checked ${checked} results, found ${relevant} useful matches, saved ${inserted}, sent ${sent}, and skipped ${duplicates} already seen.`);
-    }
+    const webPart = broadSearchConfigured
+      ? `${queriesRun} public web/social searches`
+      : "public web/social search is not configured";
+    const errorPart = errors > 0 ? ` ${errors} source checks failed and will retry.` : "";
+    await sendText(
+      `Search finished: ${officialSourcesChecked} official sources and ${webPart} reviewed ${checked} unique pages. New cards sent: ${sent}. Already seen: ${duplicates}. Saved: ${inserted}.${errorPart}`,
+    );
     return;
   }
   if (command.kind === "list") {

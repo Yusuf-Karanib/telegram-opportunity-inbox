@@ -4,11 +4,11 @@ A private Telegram bot for meaningful UAE-accessible jobs, internships, programs
 
 Paste or forward opportunity text. The bot creates a review draft, extracts only supported details, warns about likely duplicates, and waits for confirmation before saving. Unknown values stay empty.
 
-The scout runs at **7:00 AM and 7:00 PM UAE time**. It checks official GDG pages and fifteen English and Arabic web-search groups covering UAE government and university sites, research labs, startup hubs, technical communities, early-career employers, public social pages, opportunity platforms, and direct official event sites such as NASA Space Apps UAE, AI for Good, ChallengeON, Dubai AI Festival, Global AI Show, and Odoo. Every morning checks the first result page; evening runs rotate through pages 2, 3, and 4. This covers up to 80 results per search group over three days without extra API requests. Use `/discover` to check page 1 immediately.
+The scout runs at **7:00 AM and 7:00 PM UAE time**. Every run checks direct official pages for GDG UAE chapters, Dubai Future Foundation, Hub71, startAD, MBZUAI AI Nexus, ChallengeON, 42 Abu Dhabi, NASA Space Apps UAE, AI for Good, and Dubai Future Forum. It also runs fifteen English and Arabic public web searches across UAE organizations, universities, communities, platforms, and indexed social posts. Use `/discover` to run the same check immediately.
 
 When a scheduled search finds nothing new, the bot sends one short confirmation instead of staying silent.
 
-Public social posts are discovery leads, not proof. They are sent only when they clearly say applications or registration are open and include a future date. The bot does not log into social accounts or read private posts.
+Public social posts are discovery leads, not proof. They are sent only when they clearly say applications or registration are open and include a future date. The bot checks recent social results each run, but it does not log into social accounts or read private or unindexed posts.
 
 The bot classifies every message first. Technical news, security alerts, completion posts, and unclear items cannot be saved as opportunities unless Yusuf manually changes them to a real opportunity category.
 
@@ -42,6 +42,7 @@ The scout filters out expired or closed listings, articles, guides, technical ne
 - Telegram bot
 - Supabase Free database, Edge Functions, and schedule
 - Brave Search API for broad public web and social-page discovery
+- Direct checks of selected official pages and the official ChallengeON feed
 - Rule-based verification and extraction; no LLM API required
 
 The fifteen searches run twice daily, or about 900 searches in a 30-day month and 930 in a 31-day month. This stays within the current 1,000-request monthly credit, but leaves room for only a few manual `/discover` runs. Check Brave's current plan and credit requirements before enabling it. Search results are provided by [Brave Search API](https://brave.com/search/api/).

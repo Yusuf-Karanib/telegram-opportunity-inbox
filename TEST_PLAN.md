@@ -23,6 +23,9 @@
 - Deadline, event, manual, next-action, and course-inactivity reminders
 - Telegram HTML escaping and callback length
 - Fifteen English and Arabic search groups covering official sites, universities, startup hubs, communities, early-career roles, LinkedIn, X, Instagram, Devpost, Meetup, Eventbrite, F6S, Luma, and UAE hackathon platforms
+- Direct official-page extraction for Dubai Future Foundation, Hub71, startAD, MBZUAI AI Nexus, ChallengeON, 42 Abu Dhabi, NASA Space Apps UAE, AI for Good, and Dubai Future Forum
+- ChallengeON uses the team-join deadline and rejects expired or school-only challenges
+- Scan summaries count unique pages, not repeated raw search hits
 - Compact discovery cards that omit scores, repeated warnings, evidence prose, and unknown fields
 - Twice-daily 7:00 AM and 7:00 PM Dubai schedule
 - Morning page-one search plus evening rotation across pages two through four without extra requests
@@ -40,5 +43,5 @@
 8. Snooze the reminder and confirm its date changes.
 9. Mark course activity and verify the inactivity clock resets.
 10. Archive and restore an item.
-11. Run `/discover` and confirm every delivered result has a future date and a simple **Open link** button.
+11. Run `/discover` and confirm every delivered result is open, has a direct official or clearly labelled lead link, and has a simple **Open link** button.
 12. Confirm the automatic scout runs near 7:00 AM and 7:00 PM UAE time.

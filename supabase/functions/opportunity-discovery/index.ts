@@ -1,12 +1,19 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.116.0";
 import {
+  aiNexusCandidatesFromPage,
   candidateFromBraveResult,
+  candidateFromOfficialPageHtml,
+  challengeOnCandidatesFromApi,
+  directListingLinks,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
+  isClearlyClosedOpportunity,
   opportunitySearchPage,
   opportunitySearchQueries,
   shouldNotifyDiscoveryCandidate,
   type BraveWebResult,
+  type ChallengeOnApiResponse,
+  type DirectListingSource,
   type DiscoveryCandidateInput,
   type OpportunitySearchQuery,
 } from "../_shared/discovery.ts";
@@ -14,12 +21,14 @@ import { adminClient } from "../_shared/supabase.ts";
 import type { OpportunityDiscoveryCandidateRow } from "../_shared/types.ts";
 import {
   AmbiguousTelegramError,
+  deleteMessage,
   discoveryCandidateReplyMarkup,
   formatDiscoveryCandidate,
   sendHtml,
   sendText,
 } from "../_shared/telegram.ts";
 import {
+  canonicalizeUrl,
   cleanText,
   constantTimeEqual,
   jsonResponse,
@@ -33,6 +42,76 @@ const SOURCES = [
   { name: "GDG Sharjah", url: "https://gdg.community.dev/gdg-sharjah/" },
   { name: "GDG Dubai", url: "https://gdg.community.dev/gdg-dubai/" },
 ] as const;
+const DIRECT_LISTING_SOURCES: DirectListingSource[] = [
+  {
+    key: "dubai-future-programs",
+    name: "Dubai Future Foundation",
+    url: "https://www.dubaifuture.ae/programs/",
+    organization: "Dubai Future Foundation",
+    allowedHosts: ["dubaifuture.ae"],
+    pathPattern: /^\/(?:dcai-accelerators|tks-innovation-program|feel-\d{4}|verified-contributors|deep-\d{4}|[^/]*(?:program|accelerator|fellowship)[^/]*)\/?$/i,
+    anchorTextPattern: /apply now|read more/i,
+    maximumLinks: 10,
+  },
+  {
+    key: "hub71-programs",
+    name: "Hub71",
+    url: "https://www.hub71.com/i-am-a-startup",
+    organization: "Hub71",
+    allowedHosts: ["hub71.com"],
+    pathPattern: /^\/program\/[^/]+\/?$/i,
+    maximumLinks: 10,
+  },
+  {
+    key: "hub71-events",
+    name: "Hub71 Events",
+    url: "https://www.hub71.com/events",
+    organization: "Hub71",
+    allowedHosts: ["hub71.com"],
+    pathPattern: /^\/events\/[^/]+\/?$/i,
+    maximumLinks: 12,
+  },
+  {
+    key: "startad-programs",
+    name: "startAD",
+    url: "https://www.startad.ae/programs/",
+    organization: "startAD",
+    allowedHosts: ["startad.ae"],
+    pathPattern: /^\/programs\/[^/]+\/?$/i,
+    maximumLinks: 10,
+  },
+  {
+    key: "ai-for-good-events",
+    name: "AI for Good",
+    url: "https://aiforgood.itu.int/events/",
+    organization: "AI for Good / ITU",
+    allowedHosts: ["aiforgood.itu.int"],
+    pathPattern: /^\/event\/[^/]+\/?$/i,
+    maximumLinks: 12,
+  },
+];
+const DIRECT_STANDALONE_SOURCES = [
+  {
+    key: "42-piscine-status",
+    name: "42 Abu Dhabi",
+    url: "https://42abudhabi.ae/piscine-status/",
+    organization: "42 Abu Dhabi",
+  },
+  {
+    key: "nasa-space-apps-uae",
+    name: "NASA Space Apps UAE",
+    url: "https://nasaspaceapps.ae/",
+    organization: "NASA Space Apps UAE",
+  },
+  {
+    key: "dubai-future-forum",
+    name: "Dubai Future Forum",
+    url: "https://www.dubaifuture.ae/dubai-future-forum-faq/",
+    organization: "Dubai Future Foundation",
+  },
+] as const;
+const AI_NEXUS_URL = "https://ai-nexus.mbzuai.ac.ae/";
+const CHALLENGE_ON_API_URL = "https://challengeon.atrc.ae/api/v2/listable_challenges?open=true&page=1&per=20";
 const MAX_RUN_MESSAGES = 5;
 const MAX_NEW_CANDIDATES_PER_RUN = 5;
 
@@ -55,10 +134,44 @@ interface ExistingCandidate {
   error_message: string | null;
 }
 
+interface SentDiscoveryCandidate {
+  id: string;
+  source_text: string;
+  telegram_message_id: number | null;
+}
+
 const QUALITY_RESET_MESSAGE = "Cleared during the discovery quality reset.";
 
 function blocksRediscovery(row: ExistingCandidate): boolean {
   return row.status !== "dismissed" || row.error_message !== QUALITY_RESET_MESSAGE;
+}
+
+async function removeClearlyClosedCards(database: SupabaseClient): Promise<number> {
+  const result = await database.from("opportunity_discovery_candidates")
+    .select("id,source_text,telegram_message_id")
+    .eq("status", "sent")
+    .not("telegram_message_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (result.error) throw new Error(result.error.message);
+  let removed = 0;
+  for (const row of (result.data ?? []) as SentDiscoveryCandidate[]) {
+    if (!isClearlyClosedOpportunity(row.source_text) || !row.telegram_message_id) continue;
+    try {
+      await deleteMessage(row.telegram_message_id);
+    } catch (error) {
+      console.error(`Could not remove closed discovery card ${row.id}: ${safeError(error)}`);
+      continue;
+    }
+    const update = await database.from("opportunity_discovery_candidates").update({
+      status: "expired",
+      error_message: "Removed because the official page says applications or registration are closed.",
+      updated_at: new Date().toISOString(),
+    }).eq("id", row.id).eq("status", "sent");
+    if (update.error) throw new Error(update.error.message);
+    removed += 1;
+  }
+  return removed;
 }
 
 async function fetchOfficialPage(url: string): Promise<string> {
@@ -78,6 +191,188 @@ async function fetchOfficialPage(url: string): Promise<string> {
   }
 }
 
+interface DirectScanResult {
+  candidates: DiscoveryCandidateInput[];
+  pageUrls: string[];
+  sourcesChecked: number;
+  pagesChecked: number;
+  filteredOut: number;
+  errors: string[];
+}
+
+function candidatePriority(candidate: DiscoveryCandidateInput): number {
+  const hasVerifiedDate = Boolean(candidate.deadlineAt || candidate.eventAt);
+  return candidate.decisionDetails.fit_score + (hasVerifiedDate ? 25 : 0);
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let nextIndex = 0;
+  async function run(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: "fulfilled", value: await worker(items[index]) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => run()));
+  return results;
+}
+
+async function scanDirectSources(now: Date): Promise<DirectScanResult> {
+  const candidates = new Map<string, DiscoveryCandidateInput>();
+  const pageUrls = new Set<string>();
+  const errors: string[] = [];
+  let sourcesChecked = 0;
+  let pagesChecked = 0;
+  let filteredOut = 0;
+
+  const listingPromises = DIRECT_LISTING_SOURCES.map(async (source) => ({
+    source,
+    html: await fetchOfficialPage(source.url),
+  }));
+  const standalonePromises = DIRECT_STANDALONE_SOURCES.map(async (source) => ({
+    source,
+    html: await fetchOfficialPage(source.url),
+  }));
+  const aiNexusPromise = fetchOfficialPage(AI_NEXUS_URL);
+  const challengeOnPromise = fetchOfficialPage(CHALLENGE_ON_API_URL);
+
+  const [listingResults, standaloneResults, aiNexusResult, challengeOnResult] = await Promise.all([
+    Promise.allSettled(listingPromises),
+    Promise.allSettled(standalonePromises),
+    aiNexusPromise.then((value) => ({ status: "fulfilled", value }) as const)
+      .catch((reason) => ({ status: "rejected", reason }) as const),
+    challengeOnPromise.then((value) => ({ status: "fulfilled", value }) as const)
+      .catch((reason) => ({ status: "rejected", reason }) as const),
+  ]);
+
+  const detailTasks = new Map<string, { source: DirectListingSource; url: string }>();
+  for (let index = 0; index < listingResults.length; index += 1) {
+    const result = listingResults[index];
+    const source = DIRECT_LISTING_SOURCES[index];
+    if (result.status === "rejected") {
+      errors.push(`${source.name}: ${safeError(result.reason)}`);
+      continue;
+    }
+    sourcesChecked += 1;
+    pagesChecked += 1;
+    pageUrls.add(canonicalizeUrl(source.url) ?? source.url);
+    for (const url of directListingLinks(result.value.html, source)) {
+      detailTasks.set(url, { source, url });
+    }
+  }
+
+  for (let index = 0; index < standaloneResults.length; index += 1) {
+    const result = standaloneResults[index];
+    const source = DIRECT_STANDALONE_SOURCES[index];
+    if (result.status === "rejected") {
+      errors.push(`${source.name}: ${safeError(result.reason)}`);
+      continue;
+    }
+    sourcesChecked += 1;
+    pagesChecked += 1;
+    pageUrls.add(canonicalizeUrl(source.url) ?? source.url);
+    const candidate = candidateFromOfficialPageHtml(
+      result.value.html,
+      source.url,
+      source.key,
+      source.name,
+      source.organization,
+      now,
+    );
+    if (candidate && shouldNotifyDiscoveryCandidate(candidate, now)) {
+      candidates.set(candidate.sourceUrl, candidate);
+    } else {
+      filteredOut += 1;
+    }
+  }
+
+  if (aiNexusResult.status === "fulfilled") {
+    sourcesChecked += 1;
+    pagesChecked += 1;
+    pageUrls.add(AI_NEXUS_URL);
+    const parsed = aiNexusCandidatesFromPage(aiNexusResult.value, now);
+    if (parsed.length === 0) filteredOut += 1;
+    for (const candidate of parsed) candidates.set(candidate.sourceUrl, candidate);
+  } else {
+    errors.push(`MBZUAI AI Nexus: ${safeError(aiNexusResult.reason)}`);
+  }
+
+  if (challengeOnResult.status === "fulfilled") {
+    sourcesChecked += 1;
+    pagesChecked += 1;
+    pageUrls.add(CHALLENGE_ON_API_URL);
+    try {
+      const parsed = challengeOnCandidatesFromApi(
+        JSON.parse(challengeOnResult.value) as ChallengeOnApiResponse,
+        now,
+      );
+      if (parsed.length === 0) filteredOut += 1;
+      for (const candidate of parsed) candidates.set(candidate.sourceUrl, candidate);
+    } catch (error) {
+      errors.push(`ChallengeON: ${safeError(error)}`);
+    }
+  } else {
+    errors.push(`ChallengeON: ${safeError(challengeOnResult.reason)}`);
+  }
+
+  const tasks = [...detailTasks.values()];
+  const detailResults = await mapWithConcurrency(tasks, 6, async (task) => ({
+    task,
+    html: await fetchOfficialPage(task.url),
+  }));
+  for (let index = 0; index < detailResults.length; index += 1) {
+    const result = detailResults[index];
+    const task = tasks[index];
+    if (result.status === "rejected") {
+      errors.push(`${task.source.name} detail: ${safeError(result.reason)}`);
+      continue;
+    }
+    pagesChecked += 1;
+    pageUrls.add(task.url);
+    const candidate = candidateFromOfficialPageHtml(
+      result.value.html,
+      task.url,
+      task.source.key,
+      task.source.name,
+      task.source.organization,
+      now,
+    );
+    const datedListingRequired = ["hub71-events", "ai-for-good-events", "startad-programs"]
+      .includes(task.source.key);
+    if (
+      !candidate ||
+      !shouldNotifyDiscoveryCandidate(candidate, now) ||
+      (datedListingRequired && !candidate.eventAt && !candidate.deadlineAt)
+    ) {
+      filteredOut += 1;
+      continue;
+    }
+    const previous = candidates.get(candidate.sourceUrl);
+    if (!previous || candidate.decisionDetails.fit_score > previous.decisionDetails.fit_score) {
+      candidates.set(candidate.sourceUrl, candidate);
+    }
+  }
+
+  return {
+    candidates: [...candidates.values()],
+    pageUrls: [...pageUrls],
+    sourcesChecked,
+    pagesChecked,
+    filteredOut,
+    errors: errors.slice(0, 12),
+  };
+}
+
 async function searchBrave(
   search: OpportunitySearchQuery,
   apiKey: string,
@@ -89,13 +384,14 @@ async function searchBrave(
     const parameters = new URLSearchParams({
       q: search.query,
       count: "20",
-      offset: String(page),
+      // Recent social posts should not be pushed onto an older result page.
+      offset: String(search.freshness && search.freshness !== "py" ? 0 : page),
       // Brave's search-country enum does not include the UAE. Search globally,
       // then use the UAE terms and location headers below to keep local focus.
       country: "ALL",
       search_lang: search.searchLanguage ?? "en",
       safesearch: "strict",
-      freshness: "py",
+      freshness: search.freshness ?? "py",
       result_filter: "web",
       extra_snippets: "true",
       text_decorations: "false",
@@ -282,11 +578,29 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const database = adminClient();
   const now = new Date();
-  let checked = 0;
   let relevant = 0;
   let sent = 0;
   let duplicates = 0;
+  let deferred = 0;
+  let rawSearchResults = 0;
+  let filteredOut = 0;
+  let officialSourcesChecked = 0;
+  let officialPagesChecked = 0;
+  const uniquePageUrls = new Set<string>();
+  const candidatePool = new Map<string, DiscoveryCandidateInput>();
   const sourceErrors: string[] = [];
+  let removedClosedCards = 0;
+
+  try {
+    removedClosedCards = await removeClearlyClosedCards(database);
+    if (removedClosedCards > 0) {
+      await sendText(
+        `Removed ${removedClosedCards} discovery card${removedClosedCards === 1 ? "" : "s"} because the official source says applications are closed.`,
+      );
+    }
+  } catch (error) {
+    sourceErrors.push(`Closed-card cleanup: ${safeError(error)}`);
+  }
 
   await database.from("opportunity_discovery_candidates").update({
     status: "unknown",
@@ -303,27 +617,60 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
 
   let insertedThisRun = 0;
+  const addCandidate = (candidate: DiscoveryCandidateInput): void => {
+    const candidateKey = canonicalizeUrl(candidate.sourceUrl) ?? candidate.sourceUrl;
+    const previous = candidatePool.get(candidateKey);
+    if (!previous || candidatePriority(candidate) > candidatePriority(previous)) {
+      candidatePool.set(candidateKey, candidate);
+    }
+  };
+  const saveCandidate = async (candidate: DiscoveryCandidateInput): Promise<void> => {
+    if (await candidateAlreadyExists(database, candidate)) {
+      duplicates += 1;
+      return;
+    }
+    if (insertedThisRun >= MAX_NEW_CANDIDATES_PER_RUN) {
+      deferred += 1;
+      return;
+    }
+    const row = await insertCandidate(database, candidate, now);
+    if (!row) {
+      duplicates += 1;
+      return;
+    }
+    insertedThisRun += 1;
+    if (sent < MAX_RUN_MESSAGES && await deliverCandidate(database, row)) sent += 1;
+  };
+
+  try {
+    const directScan = await scanDirectSources(now);
+    officialSourcesChecked += directScan.sourcesChecked;
+    officialPagesChecked += directScan.pagesChecked;
+    filteredOut += directScan.filteredOut;
+    sourceErrors.push(...directScan.errors);
+    for (const url of directScan.pageUrls) uniquePageUrls.add(url);
+    for (const candidate of directScan.candidates) addCandidate(candidate);
+  } catch (error) {
+    sourceErrors.push(`Direct official sources: ${safeError(error)}`);
+  }
+
   for (const source of SOURCES) {
     try {
       const chapterHtml = await fetchOfficialPage(source.url);
+      officialSourcesChecked += 1;
+      officialPagesChecked += 1;
+      uniquePageUrls.add(canonicalizeUrl(source.url) ?? source.url);
       const urls = gdgUpcomingEventUrls(chapterHtml);
       for (const url of urls) {
-        checked += 1;
+        officialPagesChecked += 1;
+        uniquePageUrls.add(canonicalizeUrl(url) ?? url);
         const eventHtml = await fetchOfficialPage(url);
         const candidate = gdgCandidateFromEventPage(eventHtml, source.name, now);
-        if (!candidate) continue;
-        relevant += 1;
-        if (await candidateAlreadyExists(database, candidate)) {
-          duplicates += 1;
+        if (!candidate) {
+          filteredOut += 1;
           continue;
         }
-        const row = await insertCandidate(database, candidate, now);
-        if (!row) {
-          duplicates += 1;
-          continue;
-        }
-        insertedThisRun += 1;
-        if (sent < MAX_RUN_MESSAGES && await deliverCandidate(database, row)) sent += 1;
+        addCandidate(candidate);
       }
     } catch (error) {
       sourceErrors.push(`${source.name}: ${safeError(error)}`);
@@ -341,7 +688,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       search,
       results: await searchBrave(search, braveApiKey, searchPage),
     })));
-    const candidates = new Map<string, DiscoveryCandidateInput>();
+    const processedWebUrls = new Set<string>();
     for (const result of searchResults) {
       if (result.status === "rejected") {
         sourceErrors.push(`Web search: ${safeError(result.reason)}`);
@@ -349,53 +696,51 @@ Deno.serve(async (request: Request): Promise<Response> => {
       }
       queriesRun += 1;
       for (const webResult of result.value.results) {
-        checked += 1;
+        rawSearchResults += 1;
+        const rawUrl = cleanText(webResult.url, 2_000);
+        const pageUrl = canonicalizeUrl(rawUrl);
+        if (!pageUrl || processedWebUrls.has(pageUrl)) continue;
+        processedWebUrls.add(pageUrl);
+        uniquePageUrls.add(pageUrl);
         const candidate = candidateFromBraveResult(webResult, now);
-        if (!candidate || !shouldNotifyDiscoveryCandidate(candidate, now)) continue;
-        relevant += 1;
-        const previous = candidates.get(candidate.sourceUrl);
-        if (!previous || candidate.decisionDetails.fit_score > previous.decisionDetails.fit_score) {
-          candidates.set(candidate.sourceUrl, candidate);
-        }
-      }
-    }
-
-    const ranked = [...candidates.values()].sort((left, right) =>
-      right.decisionDetails.fit_score - left.decisionDetails.fit_score
-    );
-    for (const candidate of ranked) {
-      if (insertedThisRun >= MAX_NEW_CANDIDATES_PER_RUN) break;
-      try {
-        if (await candidateAlreadyExists(database, candidate)) {
-          duplicates += 1;
+        if (!candidate || !shouldNotifyDiscoveryCandidate(candidate, now)) {
+          filteredOut += 1;
           continue;
         }
-        const row = await insertCandidate(database, candidate, now);
-        if (!row) {
-          duplicates += 1;
-          continue;
-        }
-        insertedThisRun += 1;
-        if (sent < MAX_RUN_MESSAGES && await deliverCandidate(database, row)) sent += 1;
-      } catch (error) {
-        sourceErrors.push(`${candidate.sourceName}: ${safeError(error)}`);
+        addCandidate(candidate);
       }
     }
   }
 
+  relevant = candidatePool.size;
+  const rankedCandidates = [...candidatePool.values()].sort((left, right) =>
+    candidatePriority(right) - candidatePriority(left)
+  );
+  for (const candidate of rankedCandidates) {
+    try {
+      await saveCandidate(candidate);
+    } catch (error) {
+      sourceErrors.push(`${candidate.sourceName}: ${safeError(error)}`);
+    }
+  }
+
+  const checked = uniquePageUrls.size;
   let emptyNoticeSent = false;
-  if (notifyEmpty && sent === 0) {
+  if (notifyEmpty && sent === 0 && removedClosedCards === 0) {
     const dubaiHour = Number(new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Dubai",
       hour: "2-digit",
       hourCycle: "h23",
     }).format(now));
     const runLabel = dubaiHour < 12 ? "7 AM" : "7 PM";
-    const message = sourceErrors.length === 0
-      ? duplicates > 0
-        ? `${runLabel} search complete: checked ${checked} results. ${duplicates} useful matches were already seen; no new cards.`
-        : `${runLabel} search complete: checked ${checked} results. No new useful opportunities found.`
-      : `${runLabel} search finished with ${sourceErrors.length} source errors. I will retry at the next run.`;
+    const base = `${runLabel} scan complete: ${officialSourcesChecked} official sources and ${queriesRun} public web/social searches reviewed ${checked} unique pages.`;
+    const outcome = duplicates > 0
+      ? `${duplicates} suitable matches were already in your inbox; no new cards.`
+      : "No new suitable opportunities passed verification.";
+    const retry = sourceErrors.length > 0
+      ? ` ${sourceErrors.length} source checks failed and will retry next run.`
+      : "";
+    const message = `${base} ${outcome}${retry}`;
     try {
       await sendText(message);
       emptyNoticeSent = true;
@@ -411,8 +756,15 @@ Deno.serve(async (request: Request): Promise<Response> => {
     sent,
     duplicates,
     inserted: insertedThisRun,
+    deferred,
     queriesRun,
     searchPage,
+    uniquePagesChecked: checked,
+    rawSearchResults,
+    filteredOut,
+    officialSourcesChecked,
+    officialPagesChecked,
+    removedClosedCards,
     broadSearchConfigured: Boolean(braveApiKey),
     emptyNoticeSent,
     sourceErrors,

@@ -35,6 +35,31 @@ export interface OpportunitySearchQuery {
   key: string;
   query: string;
   searchLanguage?: "en" | "ar";
+  freshness?: "pd" | "pw" | "pm" | "py";
+}
+
+export interface DirectListingSource {
+  key: string;
+  name: string;
+  url: string;
+  organization: string;
+  allowedHosts: string[];
+  pathPattern: RegExp;
+  anchorTextPattern?: RegExp;
+  maximumLinks: number;
+}
+
+export interface ChallengeOnApiResponse {
+  data?: Array<{
+    id?: unknown;
+    attributes?: Record<string, unknown>;
+    relationships?: Record<string, unknown>;
+  }>;
+  included?: Array<{
+    id?: unknown;
+    type?: unknown;
+    attributes?: Record<string, unknown>;
+  }>;
 }
 
 export interface BraveWebResult {
@@ -230,17 +255,22 @@ export function gdgCandidateFromEventPage(
 }
 
 const OPPORTUNITY_SIGNAL = /\b(?:apply|applications?|registration|register|rsvp|open call|now open|join|sign up|tickets?|internship|apprenticeship|fellowship|accelerator|incubator|mentorship|research program|hackathon|competition|challenge|summit|conference|workshop|meetup|bootcamp|scholarship|grant|residency|summer school|exchange program|career fair|demo day|open day|masterclass|seminar)\b|التسجيل|التقديم|سجّل|قدّم|برنامج|تدريب|زمالة|مسرعة|حاضنة|إرشاد|هاكاثون|مسابقة|تحدي|قمة|مؤتمر|ورشة|منحة/i;
-const CLOSED_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+)?closed\b|\bno longer accepting\b|\bdeadline has passed\b|\bapplications? ended\b|انتهى التسجيل|التسجيل مغلق|انتهى التقديم|إغلاق باب التقديم/i;
+const CLOSED_SIGNAL = /\b(?:applications?|registration|submissions?)\b[^\n.!?]{0,180}\b(?:(?:is|are|have)\s+)?(?:(?:currently|now|temporarily)\s+)?(?:closed|over|ended)\b|\bno longer accepting\b|\bdeadline has passed\b|\bapplications? ended\b|انتهى التسجيل|التسجيل مغلق|انتهى التقديم|إغلاق باب التقديم/i;
 const FINISHED_SIGNAL = /\b(?:event has ended|program has ended|successfully concluded|that(?:'s| is) a wrap|we were thrilled to host|highlights from|recap of|completion post)\b/i;
 const CANCELLED_SIGNAL = /\b(?:event|program|competition|hackathon)\s+(?:was|is|has been)\s+cancelled\b/i;
 const NOT_OPEN_SIGNAL = /\b(?:applications?|registration)\s+(?:will\s+)?open(?:s)?\s+(?:on|soon)\b|\bcoming soon\b/i;
-const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bapply today\b|\bregister now\b|\bsign up\b|\bstart application\b|\bsubmit your application\b|\bapplication form\b|\bnow accepting\b|\bget tickets?\b|\bbuy (?:a )?pass\b|\breserve your spot\b|\brsvp\b|التسجيل مفتوح|فتح باب التسجيل|التقديم مفتوح|فتح باب التقديم|سجّل الآن|قدم الآن/i;
+const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bapply today\b|\bregister now\b|\bsign up\b|\bstart application\b|\bsubmit your application\b|\bnow accepting\b|\bcurrently accepting applications\b|\bget tickets?\b|\bbuy (?:a )?pass\b|\breserve your spot\b|\brsvp\b|التسجيل مفتوح|فتح باب التسجيل|التقديم مفتوح|فتح باب التقديم|سجّل الآن|قدم الآن/i;
 const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain|dubai internet city|expo city)\b|الإمارات|أبو\s?ظبي|دبي|الشارقة|عجمان|الفجيرة|رأس الخيمة|أم القيوين|العين/i;
 const REMOTE_ACCESS = /\b(?:remote|online|virtual|worldwide|global applicants?|open internationally|anywhere in the world)\b/i;
 const MEANINGFUL_AFFILIATION = /\b(?:mentor(?:ship|ing)?|cohort|fellowship|research|team|incubator|accelerator|internship|apprenticeship|grant|funding|sponsor(?:ed|ship)?|travel support|community|networking|reference|portfolio|demo day|residency)\b/i;
 const COMPLETION_OR_NEWS = /\b(?:cve-\d|security bulletin|vulnerability|patch advisory|has completed|successfully completed|graduated from|celebrating our|congratulations to|product update|release notes)\b/i;
 const ARTICLE_TITLE = /\b(?:salary|guide|report|news|roundup|landscape|recap|highlights?|launches|announces|shaping the future)\b/i;
 const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|g42|core42|khalifa university|nyu abu dhabi|uae university|american university of sharjah|startad|sheraa|in5|difc innovation hub|microsoft reactor|aws user group)\b/i;
+const SCHOOL_ONLY = /\b(?:kindergarten|KG\s*[1-2]|grades?\s*[1-9](?:\s*[-–]\s*1[0-2])?|primary school|secondary school|school students?|young learners?)\b/i;
+
+export function isClearlyClosedOpportunity(value: unknown): boolean {
+  return CLOSED_SIGNAL.test(cleanText(value, 12_000));
+}
 const AGGREGATOR_HOSTS = new Set(["devpost.com", "meetup.com", "eventbrite.com", "f6s.com", "lu.ma", "hackathons.ae", "cyberelites.ae"]);
 const KNOWN_OFFICIAL_HOSTS = new Set([
   "42abudhabi.ae",
@@ -313,14 +343,17 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     {
       key: "linkedin-public-posts",
       query: `site:linkedin.com/posts ${uae} ${topics} (internship OR program OR hackathon OR event OR fellowship OR "open call")`,
+      freshness: "pm",
     },
     {
       key: "x-public-posts",
       query: `(site:x.com OR site:twitter.com) ${uae} ${topics} (apply OR register OR internship OR hackathon OR program)`,
+      freshness: "pm",
     },
     {
       key: "instagram-public-posts",
       query: `site:instagram.com ${uae} ${topics} (apply OR register OR internship OR hackathon OR program OR event)`,
+      freshness: "pm",
     },
     {
       key: "opportunity-platforms",
@@ -369,6 +402,280 @@ export function opportunitySearchPage(checkedAt = new Date()): 0 | 1 | 2 | 3 {
   if (dubaiHour < 12) return 0;
   const dayIndex = Math.floor(Date.UTC(value("year"), value("month") - 1, value("day")) / 86_400_000);
   return (1 + ((dayIndex + 2) % 3)) as 1 | 2 | 3;
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function htmlAttribute(tag: string, name: string): string {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`\\b${escapedName}\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "i").exec(tag);
+  return match ? decodeHtml(match[2]).trim() : "";
+}
+
+function metaValue(html: string, key: string): string {
+  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    const name = htmlAttribute(tag, "name") || htmlAttribute(tag, "property");
+    if (name.toLowerCase() === key.toLowerCase()) return htmlAttribute(tag, "content");
+  }
+  return "";
+}
+
+function officialPageTitle(html: string): string {
+  const metaTitle = metaValue(html, "og:title");
+  if (metaTitle) return cleanSearchText(metaTitle, 220);
+  const heading = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)?.[1];
+  if (heading) return plainText(heading, 220);
+  return plainText(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1], 220);
+}
+
+function officialPageSchemas(html: string): unknown[] {
+  const schemas: unknown[] = [];
+  for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      schemas.push(JSON.parse(decodeHtml(match[1].trim())));
+    } catch {
+      // A broken analytics schema must not block the rest of the official page.
+    }
+  }
+  return schemas;
+}
+
+function officialPageDescription(html: string): string {
+  const region = /<main\b[^>]*>([\s\S]*?)<\/main>/i.exec(html)?.[1] ??
+    /<article\b[^>]*>([\s\S]*?)<\/article>/i.exec(html)?.[1] ??
+    /<body\b[^>]*>([\s\S]*?)<\/body>/i.exec(html)?.[1] ?? html;
+  const withoutChrome = region
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(?:script|style|svg|noscript|header|footer|nav)\b[^>]*>[\s\S]*?<\/(?:script|style|svg|noscript|header|footer|nav)>/gi, " ")
+    .replace(/<\/(?:p|li|h[1-6]|div|section|article|tr)>/gi, "\n")
+    .replace(/<br\s*\/?\s*>/gi, "\n");
+  const text = plainText(withoutChrome, 30_000);
+  const meta = cleanSearchText(metaValue(html, "description") || metaValue(html, "og:description"), 700);
+  const blocks = text.split(/\n+/).map((value) => cleanSearchText(value, 900)).filter(Boolean);
+  const useful = blocks.filter((value) =>
+    OPPORTUNITY_SIGNAL.test(value) || RELEVANT_TECH.test(value) || UAE_ACCESS.test(value) ||
+    /\b(?:deadline|eligib|open to|who can apply|cost|fee|free|location|duration|benefit|prize|mentor|funding|AED|USD|January|February|March|April|May|June|July|August|September|October|November|December|2026|2027)\b/i.test(value)
+  );
+  return cleanSearchText([meta, text.slice(0, 1_200), ...useful.slice(0, 16)].filter(Boolean).join("\n"), 3_700);
+}
+
+export function directListingLinks(html: string, source: DirectListingSource): string[] {
+  const output = new Set<string>();
+  const sourceUrl = new URL(source.url);
+  for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const rawHref = htmlAttribute(match[1], "href");
+    const anchorText = plainText(match[2], 500);
+    if (!rawHref || (source.anchorTextPattern && !source.anchorTextPattern.test(anchorText))) continue;
+    let resolved: URL;
+    try {
+      resolved = new URL(rawHref, sourceUrl);
+    } catch {
+      continue;
+    }
+    if (resolved.protocol !== "https:" || resolved.username || resolved.password) continue;
+    const host = resolved.hostname.toLowerCase();
+    if (!source.allowedHosts.some((allowed) => host === allowed || host.endsWith(`.${allowed}`))) continue;
+    if (!source.pathPattern.test(resolved.pathname)) continue;
+    const canonical = canonicalizeUrl(resolved.toString());
+    if (!canonical || canonical === canonicalizeUrl(source.url)) continue;
+    output.add(canonical);
+    if (output.size >= source.maximumLinks) break;
+  }
+  return [...output];
+}
+
+export function candidateFromOfficialPageHtml(
+  html: string,
+  sourceUrl: string,
+  sourceKey: string,
+  sourceName: string,
+  organization: string,
+  checkedAt = new Date(),
+): DiscoveryCandidateInput | null {
+  const title = officialPageTitle(html);
+  const description = officialPageDescription(html);
+  if (!title || !description) return null;
+  const candidate = candidateFromBraveResult({
+    title,
+    url: sourceUrl,
+    description,
+    profile: { long_name: organization },
+    deep_results: { schemas: officialPageSchemas(html) },
+  }, checkedAt);
+  if (!candidate) return null;
+  candidate.sourceKey = `direct:${sourceKey}:${candidate.sourceUrl}`;
+  candidate.sourceName = sourceName;
+  candidate.organization = organization;
+  candidate.decisionDetails.source_platform = `Official ${sourceName} page`;
+  candidate.decisionDetails.official_source_url = candidate.sourceUrl;
+  candidate.notes = notesFromDecision(candidate.decisionDetails);
+  return candidate;
+}
+
+export function aiNexusCandidatesFromPage(
+  html: string,
+  checkedAt = new Date(),
+): DiscoveryCandidateInput[] {
+  const candidates: DiscoveryCandidateInput[] = [];
+  const seen = new Set<string>();
+  const eventPattern = /<div\s+class=["'][^"']*event-deets-grid[^"']*["'][^>]*>\s*<a\b([^>]*)>([\s\S]*?)<\/a>\s*<div[^>]*>([\s\S]*?)<\/div>\s*<div\s+class=["'][^"']*location-cell[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<div[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi;
+  for (const match of html.matchAll(eventPattern)) {
+    const anchorAttributes = match[1];
+    if (htmlAttribute(anchorAttributes, "data-tab").toLowerCase() !== "upcoming") continue;
+    const target = htmlAttribute(anchorAttributes, "data-target");
+    const title = plainText(match[2], 180);
+    const rawDate = plainText(match[3], 120);
+    const location = plainText(match[4], 240);
+    const statusText = plainText(match[5], 100);
+    if (!target || !title || seen.has(title.toLowerCase()) || !/registration open/i.test(statusText)) continue;
+    const eventDate = firstListedDate(rawDate, checkedAt);
+    if (!eventDate || new Date(eventDate.at) < checkedAt) continue;
+    seen.add(title.toLowerCase());
+
+    const panelStart = html.search(new RegExp(`id=["']${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`, "i"));
+    const panelText = panelStart >= 0 ? plainText(html.slice(panelStart, panelStart + 18_000), 1_800) : "";
+    const summary = sentenceWith(panelText, /\b(?:about this event|symposium|workshop|conference|research|security|artificial intelligence|AI)\b/i, 700) ||
+      `${title} is an upcoming MBZUAI event in Abu Dhabi.`;
+    const sourceUrl = canonicalizeUrl(`https://ai-nexus.mbzuai.ac.ae/?panel=${encodeURIComponent(title)}`)!;
+    const details: OpportunityDecisionDetails = {
+      summary,
+      why_relevant: "Direct access to MBZUAI researchers, technical learning, and credible in-person connections in Abu Dhabi.",
+      source_platform: "Official MBZUAI AI Nexus page",
+      official_source_url: sourceUrl,
+      listing_status: "open",
+      evidence_level: "official",
+      cost: "Not stated",
+      location: location || "MBZUAI, Abu Dhabi, UAE",
+      format: "In person",
+      eligibility: "Not stated on the event listing",
+      restrictions: "Nationality, residency, student, age, and experience restrictions are not stated",
+      access: "Public registration appears open",
+      commitment: rawDate,
+      benefits: ["Research exposure", "Technical learning", "Credible networking"],
+      uncertainties: ["Registration deadline is not stated", "Cost is not stated", "Eligibility restrictions are not stated"],
+      recommendation: "strong_fit",
+      fit_score: 88,
+      checked_at: checkedAt.toISOString(),
+    };
+    const sourceText = [title, rawDate, location, statusText, summary].filter(Boolean).join("\n");
+    candidates.push({
+      sourceKey: `direct:mbzuai-ai-nexus:${target}`,
+      sourceUrl,
+      sourceName: "MBZUAI AI Nexus",
+      name: title,
+      organization: "MBZUAI",
+      category: "event",
+      sourceText: cleanText(sourceText, 8_000),
+      deadlineAt: null,
+      deadlineRaw: null,
+      deadlinePrecision: null,
+      eventAt: eventDate.at,
+      eventRaw: rawDate,
+      eventPrecision: eventDate.precision,
+      nextAction: "Open the official page and register if the event fits your schedule",
+      notes: notesFromDecision(details),
+      decisionDetails: details,
+    });
+  }
+  return candidates;
+}
+
+export function challengeOnCandidatesFromApi(
+  payload: ChallengeOnApiResponse,
+  checkedAt = new Date(),
+): DiscoveryCandidateInput[] {
+  const includedNames = new Map<string, string>();
+  for (const item of payload.included ?? []) {
+    const id = cleanText(item.id, 80);
+    const type = cleanText(item.type, 80);
+    const name = cleanText(item.attributes?.name, 160);
+    if (id && type && name) includedNames.set(`${type}:${id}`, name);
+  }
+
+  const output: DiscoveryCandidateInput[] = [];
+  for (const item of payload.data ?? []) {
+    const attributes = item.attributes ?? {};
+    const name = cleanText(attributes.name, 180);
+    const slug = cleanText(attributes.slug, 160);
+    const summary = cleanText(attributes.summary, 700);
+    const organization = cleanText(attributes.client, 160) || "ATRC / ASPIRE";
+    const status = cleanText(attributes.status, 80).toLowerCase();
+    const deadlineRaw = cleanText(
+      attributes.create_or_join_team_allowed_until ?? attributes.current_deadline,
+      120,
+    );
+    const deadline = new Date(deadlineRaw);
+    const combined = `${name}\n${summary}\n${organization}`;
+    if (!name || !slug || !Number.isFinite(deadline.getTime()) || deadline <= checkedAt) continue;
+    if (!/open|progress/.test(status) || SCHOOL_ONLY.test(combined) || !RELEVANT_TECH.test(combined)) continue;
+
+    const communityData = objectValue(item.relationships?.communities)?.data;
+    const communityItems = Array.isArray(communityData)
+      ? communityData as unknown[]
+      : [];
+    const communities = communityItems.map((value) => {
+      const record = objectValue(value);
+      return includedNames.get(`${cleanText(record?.type, 80)}:${cleanText(record?.id, 80)}`) ?? "";
+    }).filter(Boolean);
+    const awards = cleanText(attributes.awards_catchline, 500);
+    const sourceUrl = canonicalizeUrl(`https://challengeon.atrc.ae/en/challenges/${slug}`)!;
+    const eligibility = communities.length > 0 ? `Listed for: ${communities.join(", ")}` : "See the official challenge rules";
+    const benefits = [
+      ...awards.split(",").map((value) => cleanText(value, 100)).filter(Boolean),
+      "Practical challenge experience",
+    ].slice(0, 5);
+    const fitScore = communities.some((value) => /startup|researcher|student|other/i.test(value)) ? 84 : 78;
+    const details: OpportunityDecisionDetails = {
+      summary,
+      why_relevant: "A current UAE technology challenge with a direct official application route and potential industry exposure.",
+      source_platform: "Official ChallengeON API",
+      official_source_url: sourceUrl,
+      listing_status: "open",
+      evidence_level: "official",
+      cost: "Not stated",
+      location: "UAE / check the challenge rules",
+      format: "Not stated",
+      eligibility,
+      restrictions: "Check the full official rules for age, residency, team, and nationality requirements",
+      access: "Public application appears open",
+      commitment: "See the official challenge timeline",
+      benefits,
+      uncertainties: ["Cost is not stated", "Full eligibility and team restrictions require checking"],
+      recommendation: recommendationFor(fitScore, "official", "open"),
+      fit_score: fitScore,
+      checked_at: checkedAt.toISOString(),
+    };
+    const id = cleanText(item.id, 80) || slug;
+    output.push({
+      sourceKey: `direct:challengeon:${id}`,
+      sourceUrl,
+      sourceName: "ChallengeON by ATRC",
+      name,
+      organization,
+      category: "competition",
+      sourceText: cleanText([name, summary, awards, eligibility, `Deadline: ${deadlineRaw}`].join("\n"), 8_000),
+      deadlineAt: deadline.toISOString(),
+      deadlineRaw,
+      deadlinePrecision: "datetime",
+      eventAt: null,
+      eventRaw: null,
+      eventPrecision: null,
+      nextAction: "Open the official challenge, verify all rules, and decide whether to apply",
+      notes: notesFromDecision(details),
+      decisionDetails: details,
+    });
+  }
+  return output;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -440,7 +747,12 @@ function cleanSearchText(value: unknown, maximumLength: number): string {
     .replaceAll("&nbsp;", " ")
     .replaceAll("\u00e2\u0080\u0094", "—")
     .replaceAll("\u00e2\u0080\u0093", "–")
-    .replaceAll("\u00e2\u0080\u0099", "'");
+    .replaceAll("\u00e2\u0080\u0099", "'")
+    .replaceAll("â", "—")
+    .replaceAll("â", "–")
+    .replaceAll("â", "'")
+    .replaceAll("â", "'")
+    .replaceAll("â¦", "…");
 }
 
 function primaryResultText(result: BraveWebResult): string {
@@ -590,7 +902,8 @@ function costValue(text: string, schema: Record<string, unknown> | null): string
     const currency = cleanText(offer.priceCurrency, 12).toUpperCase();
     if (price) return Number(price) === 0 ? "Free" : `${currency || "Price"} ${price}`;
   }
-  const money = /\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b/i.exec(text);
+  const money = /\b(?:cost|fee|price|ticket|pass|registration)\b[^\n.!?]{0,80}?\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b/i.exec(text) ??
+    /\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b[^\n.!?]{0,80}?\b(?:cost|fee|price|ticket|pass|registration)\b/i.exec(text);
   if (money) return `${money[1].toUpperCase()} ${money[2]}`;
   if (/\bfree (?:entry|admission|registration|event|program|workshop|course)\b|\bno (?:fee|cost)\b/i.test(text)) return "Free";
   return "Not stated";
@@ -676,7 +989,7 @@ export function candidateFromBraveResult(
   const platform = sourcePlatform(url);
   const evidence = evidenceLevel(url, structuredOrganization);
   if (ARTICLE_TITLE.test(searchTitle) && evidence !== "official") return null;
-  if (!text || !primaryText || COMPLETION_OR_NEWS.test(primaryText) || FINISHED_SIGNAL.test(primaryText) || NON_OPPORTUNITY_LISTING.test(primaryText)) return null;
+  if (!text || !primaryText || COMPLETION_OR_NEWS.test(primaryText) || FINISHED_SIGNAL.test(primaryText) || NON_OPPORTUNITY_LISTING.test(primaryText) || SCHOOL_ONLY.test(primaryText)) return null;
   if (!schema && (!OPPORTUNITY_SIGNAL.test(primaryText) || !RELEVANT_TECH.test(primaryText))) return null;
   if (!UAE_ACCESS.test(primaryText) && !REMOTE_ACCESS.test(primaryText) && !PRIORITY_ORGANIZATION.test(primaryText)) return null;
 

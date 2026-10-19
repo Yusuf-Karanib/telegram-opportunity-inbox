@@ -119,8 +119,8 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discovery, /OPPORTUNITY_BRAVE_SEARCH_API_KEY/);
   assert.match(discovery, /api[.]search[.]brave[.]com/);
   assert.match(discovery, /country:\s*["']ALL["']/);
-  assert.match(discovery, /freshness:\s*["']py["']/);
-  assert.match(discovery, /offset:\s*String\(page\)/);
+  assert.match(discovery, /freshness:\s*search[.]freshness \?\? ["']py["']/);
+  assert.match(discovery, /offset:\s*String\(search[.]freshness/);
   assert.match(discovery, /requestedSearchPage \?\? opportunitySearchPage/);
   assert.match(bot, /search_page:\s*0/);
   assert.doesNotMatch(discovery, /country:\s*["']AE["']/);
@@ -130,7 +130,11 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discoveryCleanupMigration, /where status in \('new', 'failed'\)/);
   assert.match(emptyNoticeMigration, /'0 3,15 \* \* \*'/);
   assert.match(emptyNoticeMigration, /"notify_empty": true/);
-  assert.match(discovery, /useful matches were already seen/);
+  assert.match(discovery, /official sources and .*public web\/social searches reviewed .*unique pages/);
+  assert.match(discovery, /ai-nexus[.]mbzuai[.]ac[.]ae/);
+  assert.match(discovery, /challengeon[.]atrc[.]ae\/api\/v2\/listable_challenges/);
+  assert.match(discovery, /www[.]dubaifuture[.]ae\/programs/);
+  assert.match(discovery, /www[.]hub71[.]com\/events/);
   assert.match(discovery, /emptyNoticeSent/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);

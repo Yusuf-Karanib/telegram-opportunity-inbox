@@ -64,7 +64,7 @@ For a brand-new installation, continue below.
 
 Paste the key only into the secure prompt. The script stores it directly as a Supabase secret and does not keep it in this folder.
 
-The scout uses fifteen searches at 7:00 AM and fifteen at 7:00 PM UAE time. Every morning checks page 1; evening runs rotate through pages 2, 3, and 4. One search is in Arabic. It can find public LinkedIn, X, Instagram, Luma, and UAE hackathon pages through Brave's web index, but it cannot read private or unindexed posts.
+The scout uses fifteen searches at 7:00 AM and fifteen at 7:00 PM UAE time. Every run also checks selected official pages directly, including MBZUAI AI Nexus, ChallengeON, Dubai Future Foundation, Hub71, startAD, GDG UAE chapters, 42 Abu Dhabi, NASA Space Apps UAE, and AI for Good. One search is in Arabic. It can find recent public LinkedIn, X, Instagram, Luma, and UAE hackathon pages through Brave's web index, but it cannot read private or unindexed posts.
 
 ## 5. Create the private Telegram secrets
 

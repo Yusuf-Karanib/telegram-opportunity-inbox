@@ -67,7 +67,7 @@ Before recommending an item, record:
 
 Never fill missing facts with guesses. If official sources conflict, use the newest official source and clearly note the conflict.
 
-The Telegram bot does not browse or verify webpages. It stores only the text Yusuf supplies. When the labels above are included in pasted text, the MVP keeps the extra verification details in Notes.
+The Telegram bot checks selected official pages directly and uses public web search for broader discovery. It still cannot read private or unindexed social posts. Manually pasted items use only the text Yusuf supplies unless a separate discovery check verifies their source.
 
 ## Recommendation rule
 
