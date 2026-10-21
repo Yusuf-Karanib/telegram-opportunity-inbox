@@ -260,6 +260,7 @@ const FINISHED_SIGNAL = /\b(?:event has ended|program has ended|successfully con
 const CANCELLED_SIGNAL = /\b(?:event|program|competition|hackathon)\s+(?:was|is|has been)\s+cancelled\b/i;
 const NOT_OPEN_SIGNAL = /\b(?:applications?|registration)\s+(?:will\s+)?open(?:s)?\s+(?:on|soon)\b|\bcoming soon\b/i;
 const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bapply today\b|\bregister now\b|\bsign up\b|\bstart application\b|\bsubmit your application\b|\bnow accepting\b|\bcurrently accepting applications\b|\bget tickets?\b|\bbuy (?:a )?pass\b|\breserve your spot\b|\brsvp\b|التسجيل مفتوح|فتح باب التسجيل|التقديم مفتوح|فتح باب التقديم|سجّل الآن|قدم الآن/i;
+const DO_NOT_TRACK_SIGNAL = /(?:\bhub71\s*(?:\+|plus)?\s*(?:digital assets|life sciences)\b|\bhpp global 2027\b|\bexploring (?:the )?human and planetary microbiome at scale\b|\b2026 human cell atlas middle east symposium(?: and workshop)?\b|\bnabat terrapod(?: ai)? challenge\b|\/program\/hub71-plus-(?:digital-assets|life-sciences)\b|\bnabat-terrapod\b)/i;
 const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain|dubai internet city|expo city)\b|الإمارات|أبو\s?ظبي|دبي|الشارقة|عجمان|الفجيرة|رأس الخيمة|أم القيوين|العين/i;
 const REMOTE_ACCESS = /\b(?:remote|online|virtual|worldwide|global applicants?|open internationally|anywhere in the world)\b/i;
 const MEANINGFUL_AFFILIATION = /\b(?:mentor(?:ship|ing)?|cohort|fellowship|research|team|incubator|accelerator|internship|apprenticeship|grant|funding|sponsor(?:ed|ship)?|travel support|community|networking|reference|portfolio|demo day|residency)\b/i;
@@ -270,6 +271,11 @@ const SCHOOL_ONLY = /\b(?:kindergarten|KG\s*[1-2]|grades?\s*[1-9](?:\s*[-–]\s*
 
 export function isClearlyClosedOpportunity(value: unknown): boolean {
   return CLOSED_SIGNAL.test(cleanText(value, 12_000));
+}
+
+/** Explicit decisions from Yusuf. These items stay suppressed until he changes the list. */
+export function isDoNotTrackOpportunity(name: unknown, sourceUrl: unknown = ""): boolean {
+  return DO_NOT_TRACK_SIGNAL.test(`${cleanText(name, 500)}\n${cleanText(sourceUrl, 2_000)}`);
 }
 const AGGREGATOR_HOSTS = new Set(["devpost.com", "meetup.com", "eventbrite.com", "f6s.com", "lu.ma", "hackathons.ae", "cyberelites.ae"]);
 const KNOWN_OFFICIAL_HOSTS = new Set([
@@ -1116,6 +1122,7 @@ export function shouldNotifyDiscoveryCandidate(
   candidate: DiscoveryCandidateInput,
   checkedAt = new Date(),
 ): boolean {
+  if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) return false;
   const details = candidate.decisionDetails;
   if (["closed", "finished", "cancelled", "not_open_yet"].includes(details.listing_status)) return false;
   if (/invite only|referral required/i.test(details.access)) return false;

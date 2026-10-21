@@ -25,6 +25,8 @@ The bot classifies every message first. Technical news, security alerts, complet
 
 Discovery cards are intentionally short: title, organization/category, a brief description, and only useful known facts such as date, location, cost, eligibility, restrictions, and commitment. Unknown fields, scores, repeated warnings, and source-analysis text are hidden.
 
+The human-readable retained list is [OPPORTUNITY_TRACKER.md](OPPORTUNITY_TRACKER.md). Its items are also seeded into the private Telegram inbox as `Saved`, never as applied or registered.
+
 ## Views
 
 Use `/inbox` for Saved/Planning, Upcoming, Overdue, Waiting, Registered, Accepted, Rejected, Completed, and Archived views.

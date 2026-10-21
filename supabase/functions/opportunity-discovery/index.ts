@@ -8,6 +8,7 @@ import {
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
   isClearlyClosedOpportunity,
+  isDoNotTrackOpportunity,
   opportunitySearchPage,
   opportunitySearchQueries,
   shouldNotifyDiscoveryCandidate,
@@ -136,11 +137,16 @@ interface ExistingCandidate {
 
 interface SentDiscoveryCandidate {
   id: string;
+  name: string;
+  source_url: string;
   source_text: string;
   telegram_message_id: number | null;
+  status?: string;
+  error_message?: string | null;
 }
 
 const QUALITY_RESET_MESSAGE = "Cleared during the discovery quality reset.";
+const DO_NOT_TRACK_MESSAGE = "Removed from the master tracker by Yusuf on 2026-10-21.";
 
 function blocksRediscovery(row: ExistingCandidate): boolean {
   return row.status !== "dismissed" || row.error_message !== QUALITY_RESET_MESSAGE;
@@ -172,6 +178,40 @@ async function removeClearlyClosedCards(database: SupabaseClient): Promise<numbe
     removed += 1;
   }
   return removed;
+}
+
+async function dismissDoNotTrackCandidates(database: SupabaseClient): Promise<number> {
+  const result = await database.from("opportunity_discovery_candidates")
+    .select("id,name,source_url,source_text,telegram_message_id,status,error_message")
+    .in("status", ["new", "failed", "unknown", "sent", "saved", "dismissed"])
+    .order("created_at", { ascending: false })
+    .limit(250);
+  if (result.error) throw new Error(result.error.message);
+  let dismissed = 0;
+  for (const row of (result.data ?? []) as SentDiscoveryCandidate[]) {
+    if (!isDoNotTrackOpportunity(row.name, row.source_url)) continue;
+    if (row.status === "dismissed" && row.error_message === DO_NOT_TRACK_MESSAGE && !row.telegram_message_id) {
+      continue;
+    }
+    if (row.telegram_message_id) {
+      try {
+        await deleteMessage(row.telegram_message_id);
+      } catch (error) {
+        // Telegram may refuse to delete older messages. The disabled buttons
+        // still prevent the card from being saved again.
+        console.error(`Could not remove do-not-track discovery card ${row.id}: ${safeError(error)}`);
+      }
+    }
+    const update = await database.from("opportunity_discovery_candidates").update({
+      status: "dismissed",
+      error_message: DO_NOT_TRACK_MESSAGE,
+      telegram_message_id: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", row.id);
+    if (update.error) throw new Error(update.error.message);
+    dismissed += 1;
+  }
+  return dismissed;
 }
 
 async function fetchOfficialPage(url: string): Promise<string> {
@@ -590,6 +630,13 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const candidatePool = new Map<string, DiscoveryCandidateInput>();
   const sourceErrors: string[] = [];
   let removedClosedCards = 0;
+  let dismissedDoNotTrack = 0;
+
+  try {
+    dismissedDoNotTrack = await dismissDoNotTrackCandidates(database);
+  } catch (error) {
+    sourceErrors.push(`Do-not-track cleanup: ${safeError(error)}`);
+  }
 
   try {
     removedClosedCards = await removeClearlyClosedCards(database);
@@ -618,6 +665,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   let insertedThisRun = 0;
   const addCandidate = (candidate: DiscoveryCandidateInput): void => {
+    if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) {
+      filteredOut += 1;
+      return;
+    }
     const candidateKey = canonicalizeUrl(candidate.sourceUrl) ?? candidate.sourceUrl;
     const previous = candidatePool.get(candidateKey);
     if (!previous || candidatePriority(candidate) > candidatePriority(previous)) {
@@ -625,6 +676,10 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
   };
   const saveCandidate = async (candidate: DiscoveryCandidateInput): Promise<void> => {
+    if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) {
+      filteredOut += 1;
+      return;
+    }
     if (await candidateAlreadyExists(database, candidate)) {
       duplicates += 1;
       return;
@@ -765,6 +820,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
     officialSourcesChecked,
     officialPagesChecked,
     removedClosedCards,
+    dismissedDoNotTrack,
     broadSearchConfigured: Boolean(braveApiKey),
     emptyNoticeSent,
     sourceErrors,

@@ -8,6 +8,7 @@ import {
   directListingLinks,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
+  isDoNotTrackOpportunity,
   opportunitySearchPage,
   opportunitySearchQueries,
   shouldNotifyDiscoveryCandidate,
@@ -244,6 +245,17 @@ test("keeps an open ChallengeON technology challenge and rejects expired or scho
   assert.equal(candidates[0].name, "Nabat TerraPod AI Challenge");
   assert.equal(candidates[0].deadlineAt, "2026-11-19T20:00:00.000Z");
   assert.match(candidates[0].decisionDetails.eligibility, /University Students and Startups/);
+});
+
+test("suppresses opportunities Yusuf explicitly removed from the master tracker", () => {
+  assert.equal(isDoNotTrackOpportunity("Hub71+ Digital Assets"), true);
+  assert.equal(isDoNotTrackOpportunity("Hub71 Life Sciences", "https://www.hub71.com/program/hub71-plus-life-sciences"), true);
+  assert.equal(isDoNotTrackOpportunity("HPP Global 2027"), true);
+  assert.equal(isDoNotTrackOpportunity("Exploring the Human and Planetary Microbiome at Scale symposium"), true);
+  assert.equal(isDoNotTrackOpportunity("2026 Human Cell Atlas Middle East Symposium and Workshop"), true);
+  assert.equal(isDoNotTrackOpportunity("Nabat TerraPod AI Challenge"), true);
+  assert.equal(isDoNotTrackOpportunity("Hub71 Initiate"), false);
+  assert.equal(isDoNotTrackOpportunity("MBZUAI Agentic AI Security Symposium"), false);
 });
 
 test("checks the first page every morning and rotates three deeper evening pages", () => {

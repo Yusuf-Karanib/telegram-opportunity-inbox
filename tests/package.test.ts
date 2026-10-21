@@ -12,6 +12,7 @@ const discoveryMigration = read("../supabase/migrations/202609190002_add_opportu
 const broadDiscoveryMigration = read("../supabase/migrations/202610080001_twice_daily_broad_discovery.sql");
 const discoveryCleanupMigration = read("../supabase/migrations/202610090001_clear_noisy_discovery_backlog.sql");
 const emptyNoticeMigration = read("../supabase/migrations/202610090002_notify_empty_scout_runs.sql");
+const masterTrackerMigration = read("../supabase/migrations/202610210001_curate_master_tracker.sql");
 const bot = read("../supabase/functions/opportunity-bot/index.ts");
 const reminders = read("../supabase/functions/opportunity-reminders/index.ts");
 const discovery = read("../supabase/functions/opportunity-discovery/index.ts");
@@ -19,6 +20,7 @@ const config = read("../supabase/config.toml");
 const webhook = read("../tools/set-telegram-webhook.ps1");
 const schedule = read("../supabase/setup_schedule.sql");
 const criteria = read("../SEARCH_CRITERIA.md");
+const tracker = read("../OPPORTUNITY_TRACKER.md");
 
 test("public clients cannot read the private tables", () => {
   for (const table of [
@@ -157,4 +159,23 @@ test("search criteria require original-source verification and meaningful affili
   assert.match(criteria, /certificate alone is not a reason/i);
   assert.match(criteria, /security_alert/);
   assert.match(criteria, /completion_post/);
+});
+
+test("master tracker seeds retained items without claiming Yusuf applied", () => {
+  for (const retained of [
+    "NASA Space Apps Challenge 2026",
+    "MBZUAI Agentic AI Security Symposium",
+    "Hub71 Initiate",
+    "Hub71+ AI",
+    "Hub71 Access Programme",
+    "DCAI Agentic AI for Government Services Accelerator",
+    "Hub71 Sandbox Programme",
+  ]) {
+    assert.match(tracker, new RegExp(retained.replace(/[+]/g, "\\+"), "i"));
+    assert.match(masterTrackerMigration, new RegExp(retained.replace(/[+]/g, "\\+"), "i"));
+  }
+  assert.match(masterTrackerMigration, /'saved'/);
+  assert.doesNotMatch(masterTrackerMigration, /'applied'|'registered'/);
+  assert.match(masterTrackerMigration, /archived_at = coalesce/);
+  assert.match(masterTrackerMigration, /status = 'dismissed'/);
 });

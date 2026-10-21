@@ -77,6 +77,19 @@ Search widely but deliver narrowly. Internships, selective programs, research te
 
 Do not recommend closed or finished items, certificate-only courses, technical news, security alerts, completion posts, duplicates, or claims that cannot be traced to an original source.
 
+## Explicit do-not-track list
+
+Do not send, save, or rediscover these unless Yusuf changes the decision:
+
+- Hub71+ Digital Assets
+- Hub71+ Life Sciences
+- HPP Global 2027
+- Exploring the Human and Planetary Microbiome at Scale symposium
+- 2026 Human Cell Atlas Middle East Symposium and Workshop
+- Nabat TerraPod Challenge
+
+The retained master list and current official verification are in [OPPORTUNITY_TRACKER.md](OPPORTUNITY_TRACKER.md).
+
 ## Verified seed examples
 
 Checked against official pages on 19 September 2026.
