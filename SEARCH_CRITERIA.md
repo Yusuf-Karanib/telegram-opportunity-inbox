@@ -67,7 +67,9 @@ Before recommending an item, record:
 
 Never fill missing facts with guesses. If official sources conflict, use the newest official source and clearly note the conflict.
 
-The Telegram bot checks selected official pages directly and uses public web search for broader discovery. It still cannot read private or unindexed social posts. Manually pasted items use only the text Yusuf supplies unless a separate discovery check verifies their source.
+The Telegram bot checks selected official pages directly and uses public web search for broader discovery. Direct checks include major UAE AI and technology ecosystems, event calendars, venues, chambers, accelerators, universities, and communities. The search must include conferences, festivals, exhibitions, expos, and forums, not only programmes and hackathons. It still cannot read private or unindexed social posts. Manually pasted items use only the text Yusuf supplies unless a separate discovery check verifies their source.
+
+If an official event is rescheduled, reopened, or reuses the same URL for a new edition, compare its new verified date and status with the old record. A stale duplicate record must not suppress a genuinely new future opportunity.
 
 ## Recommendation rule
 

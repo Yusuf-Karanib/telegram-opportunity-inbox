@@ -5,12 +5,15 @@ import {
   candidateFromOfficialPageHtml,
   challengeOnCandidatesFromApi,
   directListingLinks,
+  discoveryCandidateIdentityKey,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
+  hasFocusedOpportunityRelevance,
   isClearlyClosedOpportunity,
   isDoNotTrackOpportunity,
   opportunitySearchPage,
   opportunitySearchQueries,
+  shouldRefreshPreviouslySeenCandidate,
   shouldNotifyDiscoveryCandidate,
   type BraveWebResult,
   type ChallengeOnApiResponse,
@@ -19,7 +22,7 @@ import {
   type OpportunitySearchQuery,
 } from "../_shared/discovery.ts";
 import { adminClient } from "../_shared/supabase.ts";
-import type { OpportunityDiscoveryCandidateRow } from "../_shared/types.ts";
+import type { OpportunityDiscoveryCandidateRow, OpportunityListingStatus } from "../_shared/types.ts";
 import {
   AmbiguousTelegramError,
   deleteMessage,
@@ -90,6 +93,34 @@ const DIRECT_LISTING_SOURCES: DirectListingSource[] = [
     pathPattern: /^\/event\/[^/]+\/?$/i,
     maximumLinks: 12,
   },
+  {
+    key: "dubai-ai-campus-events",
+    name: "Dubai AI Campus Events",
+    url: "https://dubaiaicampus.com/events",
+    organization: "Dubai AI Campus / DIFC",
+    allowedHosts: ["dubaiaicampus.com", "dubaiaifestival.com"],
+    pathPattern: /^(?:\/register\/?|\/(?:community|flagship)-events\/?|\/events\/[^/]+\/?)$/i,
+    anchorTextPattern: /read more|register|learn more|view event/i,
+    maximumLinks: 12,
+  },
+  {
+    key: "dubai-chambers-events",
+    name: "Dubai Chambers Events",
+    url: "https://www.dubaichambers.com/en/events",
+    organization: "Dubai Chambers",
+    allowedHosts: ["dubaichambers.com"],
+    pathPattern: /^\/en\/e\/dc_event_detail_page\/\d+\/\d+\/?$/i,
+    maximumLinks: 14,
+  },
+  {
+    key: "adnec-events",
+    name: "ADNEC Events",
+    url: "https://www.adnec.ae/en/eventlisting",
+    organization: "ADNEC",
+    allowedHosts: ["adnec.ae"],
+    pathPattern: /^\/en\/eventlisting\/[^/]+\/?$/i,
+    maximumLinks: 12,
+  },
 ];
 const DIRECT_STANDALONE_SOURCES = [
   {
@@ -109,6 +140,12 @@ const DIRECT_STANDALONE_SOURCES = [
     name: "Dubai Future Forum",
     url: "https://www.dubaifuture.ae/dubai-future-forum-faq/",
     organization: "Dubai Future Foundation",
+  },
+  {
+    key: "dubai-ai-festival-registration",
+    name: "Dubai AI Festival",
+    url: "https://dubaiaifestival.com/register/",
+    organization: "Dubai AI Campus / DIFC",
   },
 ] as const;
 const AI_NEXUS_URL = "https://ai-nexus.mbzuai.ac.ae/";
@@ -131,8 +168,36 @@ interface CandidateClaim {
 }
 
 interface ExistingCandidate {
+  id: string;
   status: string;
   error_message: string | null;
+  event_at: string | null;
+  deadline_at: string | null;
+  decision_details: { listing_status?: OpportunityListingStatus } | null;
+  telegram_message_id: number | null;
+  opportunity_id: string | null;
+}
+
+interface SentCandidateForDedupe {
+  id: string;
+  name: string;
+  source_url: string;
+  event_at: string | null;
+  deadline_at: string | null;
+  decision_details: {
+    evidence_level?: string;
+    listing_status?: OpportunityListingStatus;
+    cost?: string;
+  } | null;
+  telegram_message_id: number;
+}
+
+interface SentDirectCalendarCandidate {
+  id: string;
+  name: string;
+  source_name: string;
+  source_text: string;
+  telegram_message_id: number;
 }
 
 interface SentDiscoveryCandidate {
@@ -148,8 +213,29 @@ interface SentDiscoveryCandidate {
 const QUALITY_RESET_MESSAGE = "Cleared during the discovery quality reset.";
 const DO_NOT_TRACK_MESSAGE = "Removed from the master tracker by Yusuf on 2026-10-21.";
 
-function blocksRediscovery(row: ExistingCandidate): boolean {
-  return row.status !== "dismissed" || row.error_message !== QUALITY_RESET_MESSAGE;
+function blocksRediscovery(
+  row: ExistingCandidate,
+  candidate: DiscoveryCandidateInput,
+  checkedAt: Date,
+): boolean {
+  if (row.status === "dismissed" && row.error_message === QUALITY_RESET_MESSAGE) return false;
+  return !shouldRefreshPreviouslySeenCandidate({
+    status: row.status,
+    errorMessage: row.error_message,
+    eventAt: row.event_at,
+    deadlineAt: row.deadline_at,
+    listingStatus: row.decision_details?.listing_status,
+    opportunityId: row.opportunity_id,
+  }, candidate, checkedAt);
+}
+
+async function removeRefreshCard(row: ExistingCandidate): Promise<void> {
+  if (!row.telegram_message_id) return;
+  try {
+    await deleteMessage(row.telegram_message_id);
+  } catch (error) {
+    console.error(`Could not remove rescheduled discovery card ${row.id}: ${safeError(error)}`);
+  }
 }
 
 async function removeClearlyClosedCards(database: SupabaseClient): Promise<number> {
@@ -242,7 +328,95 @@ interface DirectScanResult {
 
 function candidatePriority(candidate: DiscoveryCandidateInput): number {
   const hasVerifiedDate = Boolean(candidate.deadlineAt || candidate.eventAt);
-  return candidate.decisionDetails.fit_score + (hasVerifiedDate ? 25 : 0);
+  const isOfficial = candidate.decisionDetails.evidence_level === "official";
+  const isOpen = candidate.decisionDetails.listing_status === "open";
+  const hasKnownCost = !/^not stated$/i.test(candidate.decisionDetails.cost);
+  return candidate.decisionDetails.fit_score + (hasVerifiedDate ? 25 : 0) +
+    (isOfficial ? 10 : 0) + (isOpen ? 15 : 0) + (hasKnownCost ? 5 : 0);
+}
+
+function sentCandidateQuality(row: SentCandidateForDedupe): number {
+  const details = row.decision_details;
+  return (details?.evidence_level === "official" ? 20 : 0) +
+    (details?.listing_status === "open" ? 15 : 0) +
+    (details?.cost && !/^not stated$/i.test(details.cost) ? 8 : 0) +
+    (/\/(?:register|apply|tickets?|passes?)\b/i.test(row.source_url) ? 4 : 0);
+}
+
+async function removeRedundantDiscoveryCards(database: SupabaseClient): Promise<number> {
+  const result = await database.from("opportunity_discovery_candidates")
+    .select("id,name,source_url,event_at,deadline_at,decision_details,telegram_message_id")
+    .eq("status", "sent")
+    .is("opportunity_id", null)
+    .not("telegram_message_id", "is", null)
+    .limit(500);
+  if (result.error) throw new Error(result.error.message);
+
+  const groups = new Map<string, SentCandidateForDedupe[]>();
+  for (const row of (result.data ?? []) as SentCandidateForDedupe[]) {
+    const key = discoveryCandidateIdentityKey(row.name, row.event_at, row.deadline_at);
+    if (!key || key === "|") continue;
+    const group = groups.get(key) ?? [];
+    group.push(row);
+    groups.set(key, group);
+  }
+
+  let removed = 0;
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.sort((left, right) =>
+      sentCandidateQuality(right) - sentCandidateQuality(left) ||
+      left.telegram_message_id - right.telegram_message_id
+    );
+    for (const duplicate of group.slice(1)) {
+      try {
+        await deleteMessage(duplicate.telegram_message_id);
+      } catch (error) {
+        console.error(`Could not remove duplicate discovery card ${duplicate.id}: ${safeError(error)}`);
+        continue;
+      }
+      const updated = await database.from("opportunity_discovery_candidates").update({
+        status: "dismissed",
+        telegram_message_id: null,
+        error_message: "Removed as a duplicate of a more complete source.",
+        updated_at: new Date().toISOString(),
+      }).eq("id", duplicate.id).eq("status", "sent");
+      if (updated.error) throw new Error(updated.error.message);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+async function removeIrrelevantDirectCalendarCards(database: SupabaseClient): Promise<number> {
+  const result = await database.from("opportunity_discovery_candidates")
+    .select("id,name,source_name,source_text,telegram_message_id")
+    .eq("status", "sent")
+    .is("opportunity_id", null)
+    .not("telegram_message_id", "is", null)
+    .in("source_name", ["Dubai AI Campus Events", "Dubai Chambers Events", "ADNEC Events"])
+    .limit(500);
+  if (result.error) throw new Error(result.error.message);
+
+  let removed = 0;
+  for (const row of (result.data ?? []) as SentDirectCalendarCandidate[]) {
+    if (hasFocusedOpportunityRelevance(row.name, row.source_text)) continue;
+    try {
+      await deleteMessage(row.telegram_message_id);
+    } catch (error) {
+      console.error(`Could not remove irrelevant discovery card ${row.id}: ${safeError(error)}`);
+      continue;
+    }
+    const updated = await database.from("opportunity_discovery_candidates").update({
+      status: "dismissed",
+      telegram_message_id: null,
+      error_message: "Removed because the event is outside Yusuf's opportunity focus.",
+      updated_at: new Date().toISOString(),
+    }).eq("id", row.id).eq("status", "sent");
+    if (updated.error) throw new Error(updated.error.message);
+    removed += 1;
+  }
+  return removed;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -471,19 +645,26 @@ async function searchBrave(
 async function candidateAlreadyExists(
   database: SupabaseClient,
   candidate: DiscoveryCandidateInput,
+  checkedAt: Date,
 ): Promise<boolean> {
+  const historyFields = "id,status,error_message,event_at,deadline_at,decision_details,telegram_message_id,opportunity_id" as const;
   const existing = await database.from("opportunity_discovery_candidates")
-    .select("status,error_message").eq("source_url", candidate.sourceUrl).maybeSingle();
+    .select(historyFields).eq("source_url", candidate.sourceUrl).maybeSingle();
   if (existing.error) throw new Error(existing.error.message);
-  if (existing.data && blocksRediscovery(existing.data as ExistingCandidate)) return true;
+  const exact = existing.data as ExistingCandidate | null;
+  if (exact && blocksRediscovery(exact, candidate, checkedAt)) return true;
+  if (exact) await removeRefreshCard(exact);
   let existingNameQuery = database.from("opportunity_discovery_candidates")
-    .select("status,error_message").eq("name", candidate.name);
+    .select(historyFields).eq("name", candidate.name);
   if (candidate.organization !== "Not stated") {
     existingNameQuery = existingNameQuery.eq("organization", candidate.organization);
   }
+  if (exact) existingNameQuery = existingNameQuery.neq("id", exact.id);
   const existingName = await existingNameQuery.limit(10);
   if (existingName.error) throw new Error(existingName.error.message);
-  if ((existingName.data ?? []).some((row) => blocksRediscovery(row as ExistingCandidate))) return true;
+  const nameMatches = (existingName.data ?? []) as ExistingCandidate[];
+  if (nameMatches.some((row) => blocksRediscovery(row, candidate, checkedAt))) return true;
+  for (const row of nameMatches) await removeRefreshCard(row);
   const saved = await database.from("opportunities").select("id")
     .eq("source_url", candidate.sourceUrl).maybeSingle();
   if (saved.error) throw new Error(saved.error.message);
@@ -604,10 +785,12 @@ Deno.serve(async (request: Request): Promise<Response> => {
   }
 
   let notifyEmpty = false;
+  let maintenanceOnly = false;
   let requestedSearchPage: 0 | 1 | 2 | 3 | null = null;
   try {
     const body = await request.json() as Record<string, unknown>;
     notifyEmpty = body?.notify_empty === true;
+    maintenanceOnly = body?.maintenance_only === true;
     const page = Number(body?.search_page);
     if (Number.isInteger(page) && page >= 0 && page <= 3) {
       requestedSearchPage = page as 0 | 1 | 2 | 3;
@@ -630,12 +813,26 @@ Deno.serve(async (request: Request): Promise<Response> => {
   const candidatePool = new Map<string, DiscoveryCandidateInput>();
   const sourceErrors: string[] = [];
   let removedClosedCards = 0;
+  let removedDuplicateCards = 0;
+  let removedIrrelevantCards = 0;
   let dismissedDoNotTrack = 0;
 
   try {
     dismissedDoNotTrack = await dismissDoNotTrackCandidates(database);
   } catch (error) {
     sourceErrors.push(`Do-not-track cleanup: ${safeError(error)}`);
+  }
+
+  try {
+    removedDuplicateCards = await removeRedundantDiscoveryCards(database);
+  } catch (error) {
+    sourceErrors.push(`Duplicate-card cleanup: ${safeError(error)}`);
+  }
+
+  try {
+    removedIrrelevantCards = await removeIrrelevantDirectCalendarCards(database);
+  } catch (error) {
+    sourceErrors.push(`Relevance cleanup: ${safeError(error)}`);
   }
 
   try {
@@ -647,6 +844,18 @@ Deno.serve(async (request: Request): Promise<Response> => {
     }
   } catch (error) {
     sourceErrors.push(`Closed-card cleanup: ${safeError(error)}`);
+  }
+
+  if (maintenanceOnly) {
+    return jsonResponse({
+      ok: sourceErrors.length === 0,
+      maintenanceOnly: true,
+      removedDuplicateCards,
+      removedIrrelevantCards,
+      removedClosedCards,
+      dismissedDoNotTrack,
+      sourceErrors,
+    });
   }
 
   await database.from("opportunity_discovery_candidates").update({
@@ -669,7 +878,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
       filteredOut += 1;
       return;
     }
-    const candidateKey = canonicalizeUrl(candidate.sourceUrl) ?? candidate.sourceUrl;
+    const candidateKey = discoveryCandidateIdentityKey(candidate.name, candidate.eventAt, candidate.deadlineAt) ||
+      canonicalizeUrl(candidate.sourceUrl) || candidate.sourceUrl;
     const previous = candidatePool.get(candidateKey);
     if (!previous || candidatePriority(candidate) > candidatePriority(previous)) {
       candidatePool.set(candidateKey, candidate);
@@ -680,7 +890,7 @@ Deno.serve(async (request: Request): Promise<Response> => {
       filteredOut += 1;
       return;
     }
-    if (await candidateAlreadyExists(database, candidate)) {
+    if (await candidateAlreadyExists(database, candidate, now)) {
       duplicates += 1;
       return;
     }
@@ -820,6 +1030,8 @@ Deno.serve(async (request: Request): Promise<Response> => {
     officialSourcesChecked,
     officialPagesChecked,
     removedClosedCards,
+    removedDuplicateCards,
+    removedIrrelevantCards,
     dismissedDoNotTrack,
     broadSearchConfigured: Boolean(braveApiKey),
     emptyNoticeSent,

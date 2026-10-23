@@ -1,8 +1,24 @@
 # Opportunity master tracker
 
-Last official-source check: **21 October 2026**
+Last official-source check: **23 October 2026**
 
-This file is the readable master record. The same seven items are saved in the Telegram inbox by the database migration. `Saved` means tracked only; it does **not** mean Yusuf applied or registered.
+This file is the readable master record. Seven retained items are saved in the Telegram inbox. `Saved` means tracked only; it does **not** mean Yusuf applied or registered. Dubai AI Festival is listed below as a pending decision and is not saved or registered automatically.
+
+## Urgent pending decision
+
+### Dubai AI Festival 2026
+
+- **Category:** Event and exhibition
+- **Priority:** Urgent — it starts in three days.
+- **Official status:** Event passes are available from the official registration page.
+- **Event:** **26–27 October 2026**.
+- **Location:** Dubai World Trade Centre, Hall 1 and Za'abeel Hall 3, Dubai.
+- **Cost:** The standard Event Pass is **USD 50**. Do not assume the other pass prices or eligibility without checking the live page.
+- **Eligibility:** The standard Event Pass is presented for ordinary attendees exploring AI solutions and sessions. The Guest Pass is application-only for C-level and senior executives, subject to approval. The Investor Pass is application-only for investors.
+- **Commitment:** Two days. Exact daily opening and closing times were not stated on the checked pages.
+- **Fit:** Strong for applied AI learning, founders, investors, companies, policy discussions, and in-person networking. It is a large commercial event, not a selective training programme or internship.
+- **Next action:** Decide immediately whether the USD 50 standard pass is worth it. Do not buy a pass until Yusuf approves.
+- **Official sources:** [registration and passes](https://dubaiaifestival.com/register/), [DIFC announcement](https://www.difc.com/whats-on/news/dubai-ai-festival-2026-global-collaboration), [DWTC venue listing](https://www.dwtc.com/en/events/dubai-ai-festival-2026/)
 
 ## Do now
 
@@ -77,8 +93,9 @@ These are blocked from future discovery cards unless Yusuf changes the decision:
 
 ## Action order
 
-1. **Now:** Choose a NASA participation location and register before local capacity or team preparation becomes a problem.
-2. **Now:** Decide whether to submit the MBZUAI interest form for 11–12 November.
-3. **This week:** Decide the two Hub71 Initiate questions: Abu Dhabi commitment and possible venture-builder equity.
-4. **Wait:** Do not apply to Hub71+ AI, Access, DCAI, or Sandbox until SignBridge reaches the stated stage.
+1. **Today:** Decide whether to buy the USD 50 Dubai AI Festival Event Pass for 26–27 October.
+2. **Now:** Choose a NASA participation location and register before local capacity or team preparation becomes a problem.
+3. **Now:** Decide whether to submit the MBZUAI interest form for 11–12 November.
+4. **This week:** Decide the two Hub71 Initiate questions: Abu Dhabi commitment and possible venture-builder equity.
+5. **Wait:** Do not apply to Hub71+ AI, Access, DCAI, or Sandbox until SignBridge reaches the stated stage.
 

@@ -6,11 +6,13 @@ import {
   candidateFromOfficialPageHtml,
   challengeOnCandidatesFromApi,
   directListingLinks,
+  discoveryCandidateIdentityKey,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
   isDoNotTrackOpportunity,
   opportunitySearchPage,
   opportunitySearchQueries,
+  shouldRefreshPreviouslySeenCandidate,
   shouldNotifyDiscoveryCandidate,
   type DirectListingSource,
 } from "../supabase/functions/_shared/discovery.ts";
@@ -129,6 +131,9 @@ test("builds fifteen broad searches including Arabic, social, and UAE ecosystem 
   assert.match(combined, /MBZUAI/);
   assert.match(combined, /Khalifa University/);
   assert.match(combined, /DIFC Innovation Hub/);
+  assert.match(combined, /Dubai AI Campus/);
+  assert.match(combined, /DWTC/);
+  assert.match(combined, /festival/);
   assert.match(combined, /Microsoft Reactor/);
   assert.match(combined, /early career/);
   assert.match(combined, /الذكاء الاصطناعي/);
@@ -183,6 +188,109 @@ test("turns a directly fetched official page into an open opportunity", () => {
   assert.equal(candidate.decisionDetails.evidence_level, "official");
   assert.equal(candidate.decisionDetails.listing_status, "open");
   assert.equal(candidate.deadlineRaw, "November 15, 2026");
+});
+
+test("recognizes the official Dubai AI Festival page as a paid open event", () => {
+  const html = `<!doctype html><html><head>
+    <meta property="og:title" content="Register for Dubai AI Festival 2026">
+    <meta name="description" content="Secure your ticket today while availability lasts.">
+    </head><body><main><h1>Register for Dubai AI Festival 2026</h1>
+    <p>26 - 27 October 2026, Dubai World Trade Centre.</p>
+    <p>EVENT PASS</p><p>USD 50</p><p>Buy a Pass</p>
+    <p>Guest pass: For C-levels and senior executives only. Subject to internal approval.</p>
+    <p>Investor pass: For investors only.</p>
+    </main></body></html>`;
+  const checkedAt = new Date("2026-10-23T04:00:00Z");
+  const candidate = candidateFromOfficialPageHtml(
+    html,
+    "https://dubaiaifestival.com/register/",
+    "dubai-ai-festival-registration",
+    "Dubai AI Festival",
+    "Dubai AI Campus / DIFC",
+    checkedAt,
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.category, "event");
+  assert.equal(candidate.eventRaw, "26 October 2026");
+  assert.equal(candidate.decisionDetails.cost, "USD 50");
+  assert.equal(candidate.decisionDetails.listing_status, "open");
+  assert.match(candidate.decisionDetails.restrictions, /C-levels|senior executives/i);
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, checkedAt), true);
+});
+
+test("rejects a generic business workshop even when its form URL contains cloud", () => {
+  const candidate = candidateFromOfficialPageHtml(
+    `<main><h1>Legislative Challenges Facing Companies</h1>
+      <p>This workshop covers company law, tax, compliance and dispute resolution in Dubai.</p>
+      <p>16 November 2026, Dubai Chambers.</p>
+      <a href="https://forms.cloud.microsoft/example">Register</a>
+    </main>`,
+    "https://www.dubaichambers.com/en/e/dc_event_detail_page/1/2",
+    "dubai-chambers-events",
+    "Dubai Chambers Events",
+    "Dubai Chambers",
+    new Date("2026-10-23T04:00:00Z"),
+  );
+  assert.equal(candidate, null);
+});
+
+test("does not call an AI policy challenges workshop a competition", () => {
+  const candidate = candidateFromOfficialPageHtml(
+    `<main><h1>Workshop: AI Policy Challenges for UAE Businesses</h1>
+      <p>Register now for an artificial intelligence governance workshop.</p>
+      <p>Event date: 26 November 2026 in Dubai.</p>
+    </main>`,
+    "https://www.dubaichambers.com/en/e/dc_event_detail_page/1/3",
+    "dubai-chambers-events",
+    "Dubai Chambers Events",
+    "Dubai Chambers",
+    new Date("2026-10-23T04:00:00Z"),
+  );
+  assert.ok(candidate);
+  assert.equal(candidate.category, "event");
+});
+
+test("rechecks an official URL when an event is rescheduled", () => {
+  const checkedAt = new Date("2026-10-23T04:00:00Z");
+  const candidate = candidateFromBraveResult({
+    title: "Dubai AI Festival 2026",
+    url: "https://dubaiaifestival.com/register/",
+    description: "Buy a pass for the AI festival in Dubai on 26-27 October 2026.",
+  }, checkedAt);
+  assert.ok(candidate);
+
+  assert.equal(shouldRefreshPreviouslySeenCandidate({
+    status: "sent",
+    eventAt: "2026-04-07T19:59:00.000Z",
+    listingStatus: "open",
+  }, candidate, checkedAt), true);
+  assert.equal(shouldRefreshPreviouslySeenCandidate({
+    status: "sent",
+    eventAt: candidate.eventAt,
+    listingStatus: "open",
+  }, candidate, checkedAt), false);
+  assert.equal(shouldRefreshPreviouslySeenCandidate({
+    status: "saved",
+    eventAt: "2026-04-07T19:59:00.000Z",
+    listingStatus: "open",
+  }, candidate, checkedAt), false);
+  assert.equal(shouldRefreshPreviouslySeenCandidate({
+    status: "dismissed",
+    errorMessage: "Removed from the master tracker by Yusuf on 2026-10-21.",
+    eventAt: "2026-04-07T19:59:00.000Z",
+    listingStatus: "open",
+  }, candidate, checkedAt), false);
+});
+
+test("treats an event landing page and its registration page as one candidate", () => {
+  const eventAt = "2026-10-26T19:59:00.000Z";
+  assert.equal(
+    discoveryCandidateIdentityKey(
+      "Dubai AI Festival 2026 | Where intelligence meets opportunity",
+      eventAt,
+    ),
+    discoveryCandidateIdentityKey("Register for Dubai AI Festival 2026", eventAt),
+  );
 });
 
 test("does not call startup funding a participant cost", () => {

@@ -4,7 +4,7 @@ A private Telegram bot for meaningful UAE-accessible jobs, internships, programs
 
 Paste or forward opportunity text. The bot creates a review draft, extracts only supported details, warns about likely duplicates, and waits for confirmation before saving. Unknown values stay empty.
 
-The scout runs at **7:00 AM and 7:00 PM UAE time**. Every run checks direct official pages for GDG UAE chapters, Dubai Future Foundation, Hub71, startAD, MBZUAI AI Nexus, ChallengeON, 42 Abu Dhabi, NASA Space Apps UAE, AI for Good, and Dubai Future Forum. It also runs fifteen English and Arabic public web searches across UAE organizations, universities, communities, platforms, and indexed social posts. Use `/discover` to run the same check immediately.
+The scout runs at **7:00 AM and 7:00 PM UAE time**. Every run checks direct official pages for GDG UAE chapters, Dubai Future Foundation, Hub71, startAD, MBZUAI AI Nexus, ChallengeON, 42 Abu Dhabi, NASA Space Apps UAE, AI for Good, Dubai Future Forum, Dubai AI Campus, Dubai AI Festival, Dubai Chambers, and ADNEC. It also runs fifteen English and Arabic public web searches across UAE organizations, universities, communities, event calendars, platforms, and indexed social posts. Use `/discover` to run the same check immediately.
 
 When a scheduled search finds nothing new, the bot sends one short confirmation instead of staying silent.
 
@@ -38,6 +38,8 @@ Pasted text never changes an item's status to applied, registered, accepted, or 
 Dates are filled only when a clear label is present, such as `Deadline:` or `Event:`. Unlabelled dates are shown as possible dates but are not assigned.
 
 The scout filters out expired or closed listings, articles, guides, technical news, security alerts, completion posts, invite-only items, and likely duplicates. Ordinary third-party articles are not delivered. Public social and opportunity-platform listings require an explicit open status and a future date.
+
+Official URLs are checked again when an event is rescheduled, reopened, or reused for a new future edition. An old date no longer blocks the corrected opportunity forever.
 
 ## Cost and stack
 

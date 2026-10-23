@@ -9,6 +9,7 @@ import {
   cleanText,
   datePrecision,
   dubaiDateString,
+  normalizeKey,
   parseDubaiDate,
 } from "./utils.ts";
 
@@ -29,6 +30,15 @@ export interface DiscoveryCandidateInput {
   nextAction: string;
   notes: string;
   decisionDetails: OpportunityDecisionDetails;
+}
+
+export interface ExistingDiscoveryCandidateSnapshot {
+  status: string;
+  errorMessage?: string | null;
+  eventAt?: string | null;
+  deadlineAt?: string | null;
+  listingStatus?: OpportunityListingStatus | null;
+  opportunityId?: string | null;
 }
 
 export interface OpportunitySearchQuery {
@@ -254,19 +264,20 @@ export function gdgCandidateFromEventPage(
   };
 }
 
-const OPPORTUNITY_SIGNAL = /\b(?:apply|applications?|registration|register|rsvp|open call|now open|join|sign up|tickets?|internship|apprenticeship|fellowship|accelerator|incubator|mentorship|research program|hackathon|competition|challenge|summit|conference|workshop|meetup|bootcamp|scholarship|grant|residency|summer school|exchange program|career fair|demo day|open day|masterclass|seminar)\b|التسجيل|التقديم|سجّل|قدّم|برنامج|تدريب|زمالة|مسرعة|حاضنة|إرشاد|هاكاثون|مسابقة|تحدي|قمة|مؤتمر|ورشة|منحة/i;
+const OPPORTUNITY_SIGNAL = /\b(?:apply|applications?|registration|register|rsvp|open call|now open|join|sign up|tickets?|passes?|internship|apprenticeship|fellowship|accelerator|incubator|mentorship|research program|hackathon|competition|challenge|summit|conference|festival|exhibition|expo|forum|workshop|meetup|bootcamp|scholarship|grant|residency|summer school|exchange program|career fair|demo day|open day|masterclass|seminar)\b|التسجيل|التقديم|سجّل|قدّم|برنامج|تدريب|زمالة|مسرعة|حاضنة|إرشاد|هاكاثون|مسابقة|تحدي|قمة|مؤتمر|مهرجان|معرض|منتدى|ورشة|منحة/i;
+const FOCUSED_OPPORTUNITY_RELEVANCE = /\b(?:ai|artificial intelligence|machine learning|computer science|software|developer|coding|programming|cloud computing|aws|azure|robot(?:ics)?|automation|cybersecurity|data science|deep tech|startup|founder|entrepreneur|accelerator|incubator|fellowship|internship|hackathon|devfest|research|space tech|quantum|blockchain)\b|الذكاء الاصطناعي|تعلم الآلة|علوم الحاسوب|البرمجيات|البرمجة|الحوسبة السحابية|الروبوتات|الأمن السيبراني|شركة ناشئة|بحث|هاكاثون/i;
 const CLOSED_SIGNAL = /\b(?:applications?|registration|submissions?)\b[^\n.!?]{0,180}\b(?:(?:is|are|have)\s+)?(?:(?:currently|now|temporarily)\s+)?(?:closed|over|ended)\b|\bno longer accepting\b|\bdeadline has passed\b|\bapplications? ended\b|انتهى التسجيل|التسجيل مغلق|انتهى التقديم|إغلاق باب التقديم/i;
 const FINISHED_SIGNAL = /\b(?:event has ended|program has ended|successfully concluded|that(?:'s| is) a wrap|we were thrilled to host|highlights from|recap of|completion post)\b/i;
 const CANCELLED_SIGNAL = /\b(?:event|program|competition|hackathon)\s+(?:was|is|has been)\s+cancelled\b/i;
 const NOT_OPEN_SIGNAL = /\b(?:applications?|registration)\s+(?:will\s+)?open(?:s)?\s+(?:on|soon)\b|\bcoming soon\b/i;
-const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bapply today\b|\bregister now\b|\bsign up\b|\bstart application\b|\bsubmit your application\b|\bnow accepting\b|\bcurrently accepting applications\b|\bget tickets?\b|\bbuy (?:a )?pass\b|\breserve your spot\b|\brsvp\b|التسجيل مفتوح|فتح باب التسجيل|التقديم مفتوح|فتح باب التقديم|سجّل الآن|قدم الآن/i;
+const OPEN_SIGNAL = /\b(?:applications?|registration|submissions?)\s+(?:are\s+|is\s+)?open\b|\bapply now\b|\bapply today\b|\bregister now\b|\bon.?site registration\b|\bsign up\b|\bstart application\b|\bsubmit your application\b|\bnow accepting\b|\bcurrently accepting applications\b|\bget tickets?\b|\b(?:tickets?|passes?)\s+(?:(?:are|is)\s+)?(?:(?:now|currently)\s+)?available\b|\bbuy (?:a )?pass\b|\bbook (?:your|a) (?:ticket|pass)\b|\bsecure your ticket\b|\breserve your spot\b|\brsvp\b|التسجيل مفتوح|فتح باب التسجيل|التقديم مفتوح|فتح باب التقديم|سجّل الآن|قدم الآن/i;
 const DO_NOT_TRACK_SIGNAL = /(?:\bhub71\s*(?:\+|plus)?\s*(?:digital assets|life sciences)\b|\bhpp global 2027\b|\bexploring (?:the )?human and planetary microbiome at scale\b|\b2026 human cell atlas middle east symposium(?: and workshop)?\b|\bnabat terrapod(?: ai)? challenge\b|\/program\/hub71-plus-(?:digital-assets|life-sciences)\b|\bnabat-terrapod\b)/i;
 const UAE_ACCESS = /\b(?:uae|united arab emirates|abu dhabi|dubai|sharjah|ajman|fujairah|ras al khaimah|umm al quwain|al ain|dubai internet city|expo city)\b|الإمارات|أبو\s?ظبي|دبي|الشارقة|عجمان|الفجيرة|رأس الخيمة|أم القيوين|العين/i;
 const REMOTE_ACCESS = /\b(?:remote|online|virtual|worldwide|global applicants?|open internationally|anywhere in the world)\b/i;
 const MEANINGFUL_AFFILIATION = /\b(?:mentor(?:ship|ing)?|cohort|fellowship|research|team|incubator|accelerator|internship|apprenticeship|grant|funding|sponsor(?:ed|ship)?|travel support|community|networking|reference|portfolio|demo day|residency)\b/i;
 const COMPLETION_OR_NEWS = /\b(?:cve-\d|security bulletin|vulnerability|patch advisory|has completed|successfully completed|graduated from|celebrating our|congratulations to|product update|release notes)\b/i;
 const ARTICLE_TITLE = /\b(?:salary|guide|report|news|roundup|landscape|recap|highlights?|launches|announces|shaping the future)\b/i;
-const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|g42|core42|khalifa university|nyu abu dhabi|uae university|american university of sharjah|startad|sheraa|in5|difc innovation hub|microsoft reactor|aws user group)\b/i;
+const PRIORITY_ORGANIZATION = /\b(?:42 abu dhabi|mbzuai|mohamed bin zayed university|hub71|dubai future foundation|dubai ai campus|dubai ai week|dubai ai festival|difc|dubai world trade centre|dwtc|adnec|dubai chambers?|dubai chamber for digital economy|gdg (?:abu dhabi|dubai|sharjah)|uae robotics and automation society|technology innovation institute|g42|core42|khalifa university|nyu abu dhabi|uae university|american university of sharjah|startad|sheraa|in5|difc innovation hub|microsoft reactor|aws user group)\b/i;
 const SCHOOL_ONLY = /\b(?:kindergarten|KG\s*[1-2]|grades?\s*[1-9](?:\s*[-–]\s*1[0-2])?|primary school|secondary school|school students?|young learners?)\b/i;
 
 export function isClearlyClosedOpportunity(value: unknown): boolean {
@@ -276,6 +287,55 @@ export function isClearlyClosedOpportunity(value: unknown): boolean {
 /** Explicit decisions from Yusuf. These items stay suppressed until he changes the list. */
 export function isDoNotTrackOpportunity(name: unknown, sourceUrl: unknown = ""): boolean {
   return DO_NOT_TRACK_SIGNAL.test(`${cleanText(name, 500)}\n${cleanText(sourceUrl, 2_000)}`);
+}
+
+/**
+ * A reused official URL may represent a rescheduled or new annual edition.
+ * Refresh only when the new verified date moved forward or a listing reopened.
+ */
+export function shouldRefreshPreviouslySeenCandidate(
+  existing: ExistingDiscoveryCandidateSnapshot,
+  candidate: DiscoveryCandidateInput,
+  checkedAt = new Date(),
+): boolean {
+  if (existing.status === "saved" || existing.opportunityId) return false;
+  if (/removed from the master tracker by Yusuf/i.test(existing.errorMessage ?? "")) return false;
+  if (candidate.decisionDetails.evidence_level !== "official") return false;
+
+  const currentDateValue = candidate.eventAt ?? candidate.deadlineAt;
+  if (!currentDateValue) return false;
+  const currentDate = new Date(currentDateValue);
+  if (!Number.isFinite(currentDate.getTime()) || currentDate < checkedAt) return false;
+
+  const previousDateValue = existing.eventAt ?? existing.deadlineAt;
+  const previousDate = previousDateValue ? new Date(previousDateValue) : null;
+  const movedForward = Boolean(
+    previousDate && Number.isFinite(previousDate.getTime()) &&
+      currentDate.getTime() - previousDate.getTime() >= 6 * 60 * 60 * 1_000,
+  );
+  const reopened = candidate.decisionDetails.listing_status === "open" &&
+    ["closed", "finished", "not_open_yet"].includes(existing.listingStatus ?? "");
+
+  if (existing.status === "expired") return !previousDateValue || movedForward || reopened;
+  return ["sent", "dismissed", "failed", "unknown"].includes(existing.status) && (movedForward || reopened);
+}
+
+export function discoveryCandidateIdentityKey(
+  name: unknown,
+  eventAt: string | null = null,
+  deadlineAt: string | null = null,
+): string {
+  const simpleName = cleanText(name, 240)
+    .split(/\s*[|•]\s*/u, 1)[0]
+    .replace(/^(?:register(?: now)?(?: for)?|apply(?: now)?(?: for)?|get tickets?(?: for)?|buy (?:a )?pass(?: for)?|join)\s+/i, "");
+  const date = (eventAt ?? deadlineAt ?? "").slice(0, 10);
+  return `${normalizeKey(simpleName)}|${date}`;
+}
+
+export function hasFocusedOpportunityRelevance(name: unknown, description: unknown): boolean {
+  const withoutLinks = `${cleanText(name, 300)}\n${cleanText(description, 8_000)}`
+    .replace(/\bhttps?:\/\/\S+|\bwww[.]\S+/gi, " ");
+  return FOCUSED_OPPORTUNITY_RELEVANCE.test(withoutLinks);
 }
 const AGGREGATOR_HOSTS = new Set(["devpost.com", "meetup.com", "eventbrite.com", "f6s.com", "lu.ma", "hackathons.ae", "cyberelites.ae"]);
 const KNOWN_OFFICIAL_HOSTS = new Set([
@@ -309,6 +369,10 @@ const KNOWN_OFFICIAL_HOSTS = new Set([
   "adgm.com",
   "dubaichambers.com",
   "dubaiaifestival.com",
+  "dubaiaicampus.com",
+  "dwtc.com",
+  "adnec.ae",
+  "expocitydubai.com",
   "globalaishow.com",
   "nasaspaceapps.ae",
   "itu.int",
@@ -332,7 +396,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "uae-events",
-      query: `${uae} ${topics} (conference OR summit OR workshop OR meetup OR seminar OR masterclass OR "career fair" OR "demo day" OR "registration open") ${years}`,
+      query: `${uae} ${topics} (conference OR summit OR festival OR exhibition OR expo OR forum OR workshop OR meetup OR seminar OR masterclass OR "career fair" OR "demo day" OR "registration open") ${years}`,
     },
     {
       key: "uae-build-challenges",
@@ -344,7 +408,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "priority-organizations",
-      query: `("42 Abu Dhabi" OR MBZUAI OR Hub71 OR ATRC OR TII OR G42 OR "Dubai Future Foundation" OR MBRIF OR "UAE Space Agency" OR "NASA Space Apps" OR "AI for Good" OR Odoo) (apply OR register OR program OR event OR internship OR challenge) ${years}`,
+      query: `("42 Abu Dhabi" OR MBZUAI OR Hub71 OR ATRC OR TII OR G42 OR "Dubai Future Foundation" OR "Dubai AI Campus" OR DIFC OR DWTC OR ADNEC OR "Dubai Chambers" OR MBRIF OR "UAE Space Agency" OR "NASA Space Apps" OR "AI for Good" OR Odoo) (apply OR register OR program OR event OR festival OR internship OR challenge) ${years}`,
     },
     {
       key: "linkedin-public-posts",
@@ -363,7 +427,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "opportunity-platforms",
-      query: `(site:devpost.com OR site:meetup.com OR site:eventbrite.com OR site:f6s.com OR site:lu.ma OR site:hackathons.ae OR site:nasaspaceapps.ae OR site:aiforgood.itu.int OR site:challengeon.atrc.ae OR site:dubaiaifestival.com OR site:globalaishow.com OR site:odoo.com OR site:regulationinnovation.org) ${uae} ${topics} (apply OR register OR tickets OR challenge OR event) ${years}`,
+      query: `(site:devpost.com OR site:meetup.com OR site:eventbrite.com OR site:f6s.com OR site:lu.ma OR site:hackathons.ae OR site:nasaspaceapps.ae OR site:aiforgood.itu.int OR site:challengeon.atrc.ae OR site:dubaiaifestival.com OR site:globalaishow.com OR site:odoo.com OR site:regulationinnovation.org) ${uae} ${topics} (apply OR register OR tickets OR event OR festival) ${years}`,
     },
     {
       key: "global-accessible",
@@ -375,7 +439,7 @@ export function opportunitySearchQueries(checkedAt = new Date()): OpportunitySea
     },
     {
       key: "uae-innovation-hubs",
-      query: `(Hub71 OR startAD OR Sheraa OR in5 OR "DIFC Innovation Hub" OR MBRIF OR ADGM OR "Dubai Chambers" OR "Technology Innovation Institute") (accelerator OR incubator OR grant OR challenge OR fellowship OR event OR "open call") ${years}`,
+      query: `(Hub71 OR startAD OR Sheraa OR in5 OR "DIFC Innovation Hub" OR "Dubai AI Campus" OR MBRIF OR ADGM OR "Dubai Chambers" OR DWTC OR ADNEC OR "Technology Innovation Institute") (accelerator OR incubator OR grant OR challenge OR fellowship OR event OR festival OR exhibition OR "open call") ${years}`,
     },
     {
       key: "uae-tech-communities",
@@ -511,6 +575,7 @@ export function candidateFromOfficialPageHtml(
   const title = officialPageTitle(html);
   const description = officialPageDescription(html);
   if (!title || !description) return null;
+  if (!hasFocusedOpportunityRelevance(title, description)) return null;
   const candidate = candidateFromBraveResult({
     title,
     url: sourceUrl,
@@ -812,8 +877,8 @@ function inferCategory(text: string, schema: Record<string, unknown> | null): Op
   const types = schema ? schemaTypes(schema) : "";
   if (/\bintern(?:ship)?\b|\bgraduate trainee\b|\bapprentice(?:ship)?\b|تدريب عملي|تدريب داخلي/i.test(text)) return "internship";
   if (/\bhackathon\b|\bbuildathon\b|هاكاثون/i.test(text)) return "hackathon";
-  if (/\bcompetition\b|\bchallenge\b|\bcontest\b|مسابقة|تحدي/i.test(text)) return "competition";
-  if (types.includes("event") || /\bconference\b|\bsummit\b|\bmeetup\b|\bworkshop\b|\btech talk\b|\bnetworking event\b|مؤتمر|قمة|ورشة/i.test(text)) return "event";
+  if (/\bcompetition\b|\b(?:ai|technology|innovation|startup|coding|robotics|space) challenge\b|\bchallenge (?:program|programme|prize)\b|\bcontest\b|مسابقة|تحدي/i.test(text)) return "competition";
+  if (types.includes("event") || /\bconference\b|\bsummit\b|\bfestival\b|\bexhibition\b|\bexpo\b|\bforum\b|\bmeetup\b|\bworkshop\b|\btech talk\b|\bnetworking event\b|مؤتمر|قمة|مهرجان|معرض|منتدى|ورشة/i.test(text)) return "event";
   if (/\bcourse\b|\bbootcamp\b|\btraining program\b|دورة|برنامج تدريبي/i.test(text)) return "course";
   if (types.includes("jobposting") || /\bjob opening\b|\bjunior (?:developer|engineer)\b/i.test(text)) return "job";
   return "program";
@@ -908,10 +973,11 @@ function costValue(text: string, schema: Record<string, unknown> | null): string
     const currency = cleanText(offer.priceCurrency, 12).toUpperCase();
     if (price) return Number(price) === 0 ? "Free" : `${currency || "Price"} ${price}`;
   }
-  const money = /\b(?:cost|fee|price|ticket|pass|registration)\b[^\n.!?]{0,80}?\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b/i.exec(text) ??
-    /\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b[^\n.!?]{0,80}?\b(?:cost|fee|price|ticket|pass|registration)\b/i.exec(text);
+  const normalizedText = cleanText(text, 8_000).replace(/\s+/g, " ");
+  const money = /\b(?:cost|fee|price|ticket|pass|registration)\b[^.!?]{0,80}?\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b/i.exec(normalizedText) ??
+    /\b(AED|USD|EUR|GBP)\s*([0-9][0-9,.]*)\b[^.!?]{0,80}?\b(?:cost|fee|price|ticket|pass|registration)\b/i.exec(normalizedText);
   if (money) return `${money[1].toUpperCase()} ${money[2]}`;
-  if (/\bfree (?:entry|admission|registration|event|program|workshop|course)\b|\bno (?:fee|cost)\b/i.test(text)) return "Free";
+  if (/\bfree (?:entry|admission|registration|event|program|workshop|course)\b|\bno (?:fee|cost)\b/i.test(normalizedText)) return "Free";
   return "Not stated";
 }
 
@@ -1027,7 +1093,7 @@ export function candidateFromBraveResult(
   const eligibility = sentenceWith(labelledFactText, /\b(?:eligib\w*|who can apply|open to|applicants? must|participants? must)\b/i) || "Not stated";
   const restrictions = sentenceWith(
     `${primaryText}\n${eligibility === "Not stated" ? "" : eligibility}`,
-    /\b(?:nationality|citizens?|residents?|residency|students?|graduates?|age|years? old|experience required)\b/i,
+    /\b(?:nationality|citizens?|residents?|residency|students?|graduates?|age|years? old|experience required|c-?level|senior executives?|investors? only|subject to (?:internal )?approval)\b/i,
   ) || "Not stated";
   const commitment = sentenceWith(primaryText, /\b(?:weeks?|months?|hours? per week|full.?time|part.?time|duration|runs? from)\b/i) || "Not stated";
   const access = /\binvite.?only\b/i.test(text)

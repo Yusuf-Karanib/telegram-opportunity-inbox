@@ -137,6 +137,14 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discovery, /challengeon[.]atrc[.]ae\/api\/v2\/listable_challenges/);
   assert.match(discovery, /www[.]dubaifuture[.]ae\/programs/);
   assert.match(discovery, /www[.]hub71[.]com\/events/);
+  assert.match(discovery, /dubaiaicampus[.]com\/events/);
+  assert.match(discovery, /dubaiaifestival[.]com\/register/);
+  assert.match(discovery, /dubaichambers[.]com\/en\/events/);
+  assert.match(discovery, /adnec[.]ae\/en\/eventlisting/);
+  assert.match(discovery, /shouldRefreshPreviouslySeenCandidate/);
+  assert.match(discovery, /removeRedundantDiscoveryCards/);
+  assert.match(discovery, /removeIrrelevantDirectCalendarCards/);
+  assert.match(discovery, /maintenance_only/);
   assert.match(discovery, /emptyNoticeSent/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);
@@ -178,4 +186,6 @@ test("master tracker seeds retained items without claiming Yusuf applied", () =>
   assert.doesNotMatch(masterTrackerMigration, /'applied'|'registered'/);
   assert.match(masterTrackerMigration, /archived_at = coalesce/);
   assert.match(masterTrackerMigration, /status = 'dismissed'/);
+  assert.match(tracker, /Dubai AI Festival 2026/);
+  assert.doesNotMatch(masterTrackerMigration, /Dubai AI Festival 2026/);
 });
