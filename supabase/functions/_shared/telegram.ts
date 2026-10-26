@@ -124,6 +124,23 @@ export async function deleteMessage(messageId: number): Promise<void> {
   });
 }
 
+export async function editDiscoveryMessage(row: OpportunityDiscoveryCandidateRow): Promise<void> {
+  if (!row.telegram_message_id) return;
+  try {
+    await telegramCall<SentMessage>("editMessageText", {
+      chat_id: requiredEnv("OPPORTUNITY_TELEGRAM_CHAT_ID"),
+      message_id: row.telegram_message_id,
+      text: formatDiscoveryCandidate(row),
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+      reply_markup: discoveryCandidateReplyMarkup(row),
+    });
+  } catch (error) {
+    if (error instanceof Error && /message is not modified/i.test(error.message)) return;
+    throw error;
+  }
+}
+
 export async function answerCallback(callbackId: string, text: string): Promise<void> {
   await telegramCall<boolean>("answerCallbackQuery", {
     callback_query_id: callbackId,
@@ -475,11 +492,15 @@ export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow):
     `<b>${escapeHtml(discoveryText(row.name, 180) ?? "Opportunity")}</b>`,
     escapeHtml(meta),
   ];
+  if (["dismissed", "expired"].includes(row.status)) lines.push("Suggestion withdrawn");
+  if (details?.date_conflict) lines.push(`<b>Date needs confirmation:</b> ${escapeHtml(cleanText(details.date_conflict, 220))}`);
 
   if (details?.evidence_level === "social_lead") {
     lines.push("<b>Source check:</b> Public post; official page not confirmed");
   } else if (details?.evidence_level === "aggregator") {
     lines.push("<b>Source check:</b> Platform listing; organizer page not confirmed");
+  } else if (details?.listing_status === "unverified") {
+    lines.push("Registration not confirmed");
   }
 
   const summary = discoveryText(details?.summary, 320);
@@ -492,7 +513,10 @@ export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow):
     facts.push(`<b>Deadline:</b> ${escapeHtml(formatDubaiMoment(row.deadline_at, row.deadline_precision))}`);
   }
   if (row.event_at) {
-    facts.push(`<b>Date:</b> ${escapeHtml(formatDubaiMoment(row.event_at, row.event_precision))}`);
+    const start = formatDubaiMoment(row.event_at, row.event_precision);
+    const end = details?.event_end_at && details.event_end_at !== row.event_at
+      ? ` – ${formatDubaiMoment(details.event_end_at, details.event_end_precision)}` : "";
+    facts.push(`<b>Date:</b> ${escapeHtml(start + end)}`);
   }
   if (details) {
     const location = discoveryText(details.location, 140);
@@ -501,7 +525,7 @@ export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow):
       .filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index)
       .join(" · ");
     const placeLine = discoveryFact("Place", place, 190);
-    const costLine = discoveryFact("Cost", details.cost, 100);
+    const costLine = discoveryFact("Cost", details.cost, 240);
     const eligibilityLine = discoveryFact("Eligibility", details.eligibility, 220);
     const restrictions = discoveryText(details.restrictions, 180);
     const restrictionLine = restrictions && restrictions !== discoveryText(details.eligibility, 180)
@@ -517,6 +541,9 @@ export function formatDiscoveryCandidate(row: OpportunityDiscoveryCandidateRow):
 }
 
 export function discoveryCandidateReplyMarkup(row: OpportunityDiscoveryCandidateRow): Record<string, unknown> {
+  if (["dismissed", "expired"].includes(row.status)) {
+    return { inline_keyboard: [[{ text: "Open source", url: row.source_url }]] };
+  }
   return {
     inline_keyboard: [
       [
@@ -536,6 +563,7 @@ export function helpText(): string {
     "",
     "/inbox — open the dashboard",
     "/discover — check official sources now",
+    "/health — last search result and queued cards",
     "/add — start a new draft",
     "/show 12 — open item #12",
     "/status 12 applied — confirm a status",

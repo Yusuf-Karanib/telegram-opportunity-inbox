@@ -45,6 +45,7 @@ import {
   safeError,
 } from "../_shared/utils.ts";
 import { rowsForView, viewCounts } from "../_shared/views.ts";
+import { discoveryCandidateExpired, discoveryHealthText, type DiscoveryRunRow } from "../_shared/scout-policy.ts";
 
 const MAX_WEBHOOK_BYTES = 100_000;
 const MAX_SOURCE_TEXT = 8_000;
@@ -183,7 +184,7 @@ async function saveDiscoveryCandidate(
 
 async function runDiscoveryNow(): Promise<Record<string, unknown>> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 80_000);
+  const timeout = setTimeout(() => controller.abort(), 115_000);
   try {
     const response = await fetch(`${requiredEnv("SUPABASE_URL")}/functions/v1/opportunity-discovery`, {
       method: "POST",
@@ -611,12 +612,25 @@ async function handleCommand(
     await renderDashboard(database, replyTo);
     return;
   }
+  if (command.kind === "health") {
+    const result = await database.from("opportunity_discovery_runs").select("*")
+      .not("run_key", "like", "preview:%").not("run_key", "like", "maintenance:%")
+      .order("started_at", { ascending: false }).limit(1).maybeSingle();
+    if (result.error) throw new Error(`Could not read search status: ${result.error.message}`);
+    await sendText(discoveryHealthText(result.data as DiscoveryRunRow | null), undefined, replyTo);
+    return;
+  }
   if (command.kind === "discover") {
     await sendText("Checking official sites and public web/social results now.", undefined, replyTo);
     const result = await runDiscoveryNow();
+    if (result.skipped === true) {
+      await sendText(result.reason === "already_running"
+        ? "A search is already running. New cards will arrive when it finishes."
+        : "A search just ran. Send /health for its result; manual searches are spaced 10 minutes apart.");
+      return;
+    }
     const sent = Number(result.sent ?? 0);
-    const checked = Number(result.uniquePagesChecked ?? result.checked ?? 0);
-    const inserted = Number(result.inserted ?? 0);
+    const queued = Number(result.queued ?? 0);
     const duplicates = Number(result.duplicates ?? 0);
     const queriesRun = Number(result.queriesRun ?? 0);
     const officialSourcesChecked = Number(result.officialSourcesChecked ?? 0);
@@ -630,7 +644,7 @@ async function handleCommand(
       : "public web/social search is not configured";
     const errorPart = errors > 0 ? ` ${errors} source checks failed and will retry.` : "";
     await sendText(
-      `Search finished: ${officialSourcesChecked} official sources and ${webPart} reviewed ${checked} unique pages. New cards sent: ${sent}. Already seen: ${duplicates}. Saved: ${inserted}.${errorPart}`,
+      `Search finished: ${sent} new cards sent. ${queued} waiting for the next delivery. ${duplicates} already seen. Checked ${officialSourcesChecked} official sources and ${webPart}.${errorPart}`,
     );
     return;
   }
@@ -745,6 +759,7 @@ async function handleCallback(
       }
       const { error } = await database.from("opportunity_discovery_candidates").update({
         status: "dismissed",
+        error_message: "Dismissed by Yusuf.",
         updated_at: new Date().toISOString(),
       }).eq("id", candidate.id);
       if (error) throw new Error(`Could not dismiss suggestion: ${error.message}`);
@@ -755,11 +770,11 @@ async function handleCallback(
       await answerCallback(callbackId, "This suggestion is no longer active");
       return;
     }
-    if (candidate.event_at && new Date(candidate.event_at) <= new Date()) {
+    if (discoveryCandidateExpired(candidate)) {
       await database.from("opportunity_discovery_candidates").update({
         status: "expired", updated_at: new Date().toISOString(),
       }).eq("id", candidate.id);
-      await answerCallback(callbackId, "The event has already passed");
+      await answerCallback(callbackId, "The event or application deadline has passed");
       return;
     }
     await answerCallback(callbackId, "Saving");

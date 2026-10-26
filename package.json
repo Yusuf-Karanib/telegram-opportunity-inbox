@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "supabase": "2.116.0"
+  },
+  "dependencies": {
+    "htmlparser2": "10.1.0"
   }
 }

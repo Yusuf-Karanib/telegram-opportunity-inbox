@@ -31,6 +31,8 @@ The human-readable retained list is [OPPORTUNITY_TRACKER.md](OPPORTUNITY_TRACKER
 
 Use `/inbox` for Saved/Planning, Upcoming, Overdue, Waiting, Registered, Accepted, Rejected, Completed, and Archived views.
 
+Use `/health` to see the last search result, source failures, and cards waiting to send. `/discover` starts a manual search; repeated requests within ten minutes are skipped. The database prevents overlapping searches and records interrupted runs.
+
 ## Important safety rule
 
 Pasted text never changes an item's status to applied, registered, accepted, or completed. Yusuf must confirm status with a button or `/status` command.
@@ -40,6 +42,12 @@ Dates are filled only when a clear label is present, such as `Deadline:` or `Eve
 The scout filters out expired or closed listings, articles, guides, technical news, security alerts, completion posts, invite-only items, and likely duplicates. Ordinary third-party articles are not delivered. Public social and opportunity-platform listings require an explicit open status and a future date.
 
 Official URLs are checked again when an event is rescheduled, reopened, or reused for a new future edition. An old date no longer blocks the corrected opportunity forever.
+
+Search snippets are leads. An official-domain result must be opened and its current page read before it can be delivered as an official opportunity. News stories, About pages, agendas, sponsorship sales, and exhibition-package sales are excluded. Social and platform leads need an explicit open-registration statement and a future date.
+
+The scout sends at most five cards per run and stores up to fifty new suitable matches in a private queue. Remaining cards are checked again before later delivery. Nearby deadlines receive higher priority. A dismissed suggestion stays dismissed.
+
+The lightweight page reader ignores menus, hidden dialogs, unrelated programme cards, speaker biographies, and website chatbots. Cards retain known ticket tiers, membership fees, VAT wording, and multi-day event dates. Conflicting organizer dates are flagged and left unassigned.
 
 ## Cost and stack
 

@@ -13,6 +13,7 @@ const broadDiscoveryMigration = read("../supabase/migrations/202610080001_twice_
 const discoveryCleanupMigration = read("../supabase/migrations/202610090001_clear_noisy_discovery_backlog.sql");
 const emptyNoticeMigration = read("../supabase/migrations/202610090002_notify_empty_scout_runs.sql");
 const masterTrackerMigration = read("../supabase/migrations/202610210001_curate_master_tracker.sql");
+const reliableDiscoveryMigration = read("../supabase/migrations/202610250001_reliable_discovery.sql");
 const bot = read("../supabase/functions/opportunity-bot/index.ts");
 const reminders = read("../supabase/functions/opportunity-reminders/index.ts");
 const discovery = read("../supabase/functions/opportunity-discovery/index.ts");
@@ -128,11 +129,11 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.doesNotMatch(discovery, /country:\s*["']AE["']/);
   assert.match(discovery, /MAX_RUN_MESSAGES = 5/);
   assert.match(discovery, /QUALITY_RESET_MESSAGE/);
-  assert.match(discovery, /upsert\(values, \{ onConflict: ["']source_url["'] \}\)/);
+  assert.match(discovery, /eq\("status", previous.data.status\).is\("opportunity_id", null\)/);
   assert.match(discoveryCleanupMigration, /where status in \('new', 'failed'\)/);
   assert.match(emptyNoticeMigration, /'0 3,15 \* \* \*'/);
   assert.match(emptyNoticeMigration, /"notify_empty": true/);
-  assert.match(discovery, /official sources and .*public web\/social searches reviewed .*unique pages/);
+  assert.match(discovery, /official sources and .*web searches/);
   assert.match(discovery, /ai-nexus[.]mbzuai[.]ac[.]ae/);
   assert.match(discovery, /challengeon[.]atrc[.]ae\/api\/v2\/listable_challenges/);
   assert.match(discovery, /www[.]dubaifuture[.]ae\/programs/);
@@ -148,6 +149,17 @@ test("discovery is private, approval-based, duplicate-safe, and scheduled for 7 
   assert.match(discovery, /emptyNoticeSent/);
   assert.match(bot, /DISCOVERY_CANDIDATE_PATTERN/);
   assert.match(bot, /saveDiscoveryCandidate/);
+});
+
+test("search runs are private, serialized, and recorded for health checks", () => {
+  assert.match(reliableDiscoveryMigration, /pg_advisory_xact_lock/);
+  assert.match(reliableDiscoveryMigration, /interval '6 minutes'/);
+  assert.match(reliableDiscoveryMigration, /interval '10 minutes'/);
+  assert.match(reliableDiscoveryMigration, /alter table public.opportunity_discovery_runs enable row level security/);
+  assert.match(reliableDiscoveryMigration, /from public, anon, authenticated/);
+  assert.match(discovery, /claim_opportunity_discovery_run/);
+  assert.match(discovery, /recordResult/);
+  assert.match(bot, /command.kind === "health"/);
 });
 
 test("search criteria require original-source verification and meaningful affiliation", () => {

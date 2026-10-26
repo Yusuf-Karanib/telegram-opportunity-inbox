@@ -1,32 +1,37 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.116.0";
 import {
   aiNexusCandidatesFromPage,
+  type BraveWebResult,
   candidateFromBraveResult,
   candidateFromOfficialPageHtml,
+  type ChallengeOnApiResponse,
   challengeOnCandidatesFromApi,
   directListingLinks,
+  type DirectListingSource,
   discoveryCandidateIdentityKey,
+  type DiscoveryCandidateInput,
   gdgCandidateFromEventPage,
   gdgUpcomingEventUrls,
   hasFocusedOpportunityRelevance,
   isClearlyClosedOpportunity,
   isDoNotTrackOpportunity,
+  isOfficialOpportunityUrl,
+  isOpportunityDetailUrl,
   opportunitySearchPage,
   opportunitySearchQueries,
-  shouldRefreshPreviouslySeenCandidate,
-  shouldNotifyDiscoveryCandidate,
-  type BraveWebResult,
-  type ChallengeOnApiResponse,
-  type DirectListingSource,
-  type DiscoveryCandidateInput,
   type OpportunitySearchQuery,
+  shouldNotifyDiscoveryCandidate,
+  shouldRefreshPreviouslySeenCandidate,
 } from "../_shared/discovery.ts";
+import { fetchPublicPage } from "../_shared/public-page.ts";
+import { discoveryCandidateExpired, discoveryRunKey } from "../_shared/scout-policy.ts";
 import { adminClient } from "../_shared/supabase.ts";
 import type { OpportunityDiscoveryCandidateRow, OpportunityListingStatus } from "../_shared/types.ts";
 import {
   AmbiguousTelegramError,
   deleteMessage,
   discoveryCandidateReplyMarkup,
+  editDiscoveryMessage,
   formatDiscoveryCandidate,
   sendHtml,
   sendText,
@@ -53,7 +58,8 @@ const DIRECT_LISTING_SOURCES: DirectListingSource[] = [
     url: "https://www.dubaifuture.ae/programs/",
     organization: "Dubai Future Foundation",
     allowedHosts: ["dubaifuture.ae"],
-    pathPattern: /^\/(?:dcai-accelerators|tks-innovation-program|feel-\d{4}|verified-contributors|deep-\d{4}|[^/]*(?:program|accelerator|fellowship)[^/]*)\/?$/i,
+    pathPattern:
+      /^\/(?:dcai-accelerators|tks-innovation-program|feel-\d{4}|verified-contributors|deep-\d{4}|[^/]*(?:program|accelerator|fellowship)[^/]*)\/?$/i,
     anchorTextPattern: /apply now|read more/i,
     maximumLinks: 10,
   },
@@ -151,7 +157,8 @@ const DIRECT_STANDALONE_SOURCES = [
 const AI_NEXUS_URL = "https://ai-nexus.mbzuai.ac.ae/";
 const CHALLENGE_ON_API_URL = "https://challengeon.atrc.ae/api/v2/listable_challenges?open=true&page=1&per=20";
 const MAX_RUN_MESSAGES = 5;
-const MAX_NEW_CANDIDATES_PER_RUN = 5;
+const MAX_NEW_CANDIDATES_PER_RUN = 50;
+const MAX_VERIFIED_WEB_PAGES = 24;
 
 interface BraveSearchResponse {
   web?: { results?: BraveWebResult[] };
@@ -169,6 +176,8 @@ interface CandidateClaim {
 
 interface ExistingCandidate {
   id: string;
+  name: string;
+  identity_key: string | null;
   status: string;
   error_message: string | null;
   event_at: string | null;
@@ -212,21 +221,29 @@ interface SentDiscoveryCandidate {
 
 const QUALITY_RESET_MESSAGE = "Cleared during the discovery quality reset.";
 const DO_NOT_TRACK_MESSAGE = "Removed from the master tracker by Yusuf on 2026-10-21.";
+const AUTO_WITHDRAWN_MESSAGE = "Withdrawn after checking the current source and opportunity criteria.";
 
 function blocksRediscovery(
   row: ExistingCandidate,
   candidate: DiscoveryCandidateInput,
   checkedAt: Date,
 ): boolean {
-  if (row.status === "dismissed" && row.error_message === QUALITY_RESET_MESSAGE) return false;
-  return !shouldRefreshPreviouslySeenCandidate({
-    status: row.status,
-    errorMessage: row.error_message,
-    eventAt: row.event_at,
-    deadlineAt: row.deadline_at,
-    listingStatus: row.decision_details?.listing_status,
-    opportunityId: row.opportunity_id,
-  }, candidate, checkedAt);
+  if (
+    row.status === "dismissed" && [QUALITY_RESET_MESSAGE, AUTO_WITHDRAWN_MESSAGE].includes(row.error_message ?? "") &&
+    !row.opportunity_id && shouldNotifyDiscoveryCandidate(candidate, checkedAt)
+  ) return false;
+  return !shouldRefreshPreviouslySeenCandidate(
+    {
+      status: row.status,
+      errorMessage: row.error_message,
+      eventAt: row.event_at,
+      deadlineAt: row.deadline_at,
+      listingStatus: row.decision_details?.listing_status,
+      opportunityId: row.opportunity_id,
+    },
+    candidate,
+    checkedAt,
+  );
 }
 
 async function removeRefreshCard(row: ExistingCandidate): Promise<void> {
@@ -301,20 +318,109 @@ async function dismissDoNotTrackCandidates(database: SupabaseClient): Promise<nu
 }
 
 async function fetchOfficialPage(url: string): Promise<string> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { "user-agent": "Yusuf-Opportunity-Inbox/1.0" },
-    });
-    if (!response.ok) throw new Error(`Official page returned HTTP ${response.status}`);
-    const html = await response.text();
-    if (html.length > 2_000_000) throw new Error("Official page was unexpectedly large");
-    return html;
-  } finally {
-    clearTimeout(timeout);
+  const page = await fetchPublicPage(url);
+  if (!isOfficialOpportunityUrl(page.url) && new URL(page.url).hostname !== new URL(url).hostname) {
+    throw new Error("Official source redirected to a different organizer");
   }
+  return page.text;
+}
+
+async function retireDiscoveryCard(
+  database: SupabaseClient,
+  row: OpportunityDiscoveryCandidateRow,
+  reason: string,
+): Promise<boolean> {
+  const result = await database.from("opportunity_discovery_candidates").update({
+    status: "dismissed",
+    error_message: reason,
+    updated_at: new Date().toISOString(),
+  }).eq("id", row.id).eq("status", "sent").is("opportunity_id", null).select("*").maybeSingle();
+  if (result.error) throw new Error(result.error.message);
+  if (!result.data) return false;
+  if (row.telegram_message_id) {
+    try {
+      await deleteMessage(row.telegram_message_id);
+      await database.from("opportunity_discovery_candidates").update({ telegram_message_id: null }).eq("id", row.id);
+    } catch {
+      // Telegram only allows deletion of recent messages. Older cards can be
+      // edited to remove Save, while their source and history remain available.
+      await editDiscoveryMessage(result.data as OpportunityDiscoveryCandidateRow);
+    }
+  }
+  return true;
+}
+
+async function refreshSentCards(
+  database: SupabaseClient,
+  now: Date,
+): Promise<{ updated: number; retired: number; errors: string[] }> {
+  const result = await database.from("opportunity_discovery_candidates").select("*")
+    .eq("status", "sent").is("opportunity_id", null)
+    .order("checked_at", { ascending: false }).limit(100);
+  if (result.error) throw new Error(result.error.message);
+  const rows = (result.data ?? []) as OpportunityDiscoveryCandidateRow[];
+  const refreshed = await mapWithConcurrency(rows, 6, async (row) => {
+    if (isDoNotTrackOpportunity(row.name, row.source_url)) return { row, candidate: null };
+    if (!isOpportunityDetailUrl(row.source_url)) return { row, candidate: null };
+    const candidate = isOfficialOpportunityUrl(row.source_url)
+      ? candidateFromOfficialPageHtml(
+        await fetchOfficialPage(row.source_url),
+        row.source_url,
+        "existing-card",
+        row.source_name,
+        row.organization,
+        now,
+      )
+      : candidateFromBraveResult({ title: row.name, url: row.source_url, description: row.source_text }, now);
+    return { row, candidate };
+  });
+  let updated = 0;
+  let retired = 0;
+  const errors: string[] = [];
+  for (let index = 0; index < refreshed.length; index += 1) {
+    const entry = refreshed[index];
+    if (entry.status === "rejected") {
+      errors.push(`${rows[index].name}: ${safeError(entry.reason)}`);
+      continue;
+    }
+    const { row, candidate } = entry.value;
+    try {
+      if (!candidate || !shouldNotifyDiscoveryCandidate(candidate, now)) {
+        if (
+          await retireDiscoveryCard(
+            database,
+            row,
+            AUTO_WITHDRAWN_MESSAGE,
+          )
+        ) retired += 1;
+        continue;
+      }
+      const changed = await database.from("opportunity_discovery_candidates").update({
+        name: candidate.name,
+        category: candidate.category,
+        source_text: candidate.sourceText,
+        event_at: candidate.eventAt,
+        event_raw: candidate.eventRaw,
+        event_precision: candidate.eventPrecision,
+        deadline_at: candidate.deadlineAt,
+        deadline_raw: candidate.deadlineRaw,
+        deadline_precision: candidate.deadlinePrecision,
+        next_action: candidate.nextAction,
+        notes: candidate.notes,
+        decision_details: candidate.decisionDetails,
+        checked_at: now.toISOString(),
+        updated_at: now.toISOString(),
+        identity_key: discoveryCandidateIdentityKey(candidate.name, candidate.eventAt, candidate.deadlineAt),
+      }).eq("id", row.id).eq("status", "sent").is("opportunity_id", null).select("*").maybeSingle();
+      if (changed.error) throw new Error(changed.error.message);
+      if (!changed.data) continue;
+      await editDiscoveryMessage(changed.data as OpportunityDiscoveryCandidateRow);
+      updated += 1;
+    } catch (error) {
+      errors.push(`${row.name}: ${safeError(error)}`);
+    }
+  }
+  return { updated, retired, errors };
 }
 
 interface DirectScanResult {
@@ -326,12 +432,16 @@ interface DirectScanResult {
   errors: string[];
 }
 
-function candidatePriority(candidate: DiscoveryCandidateInput): number {
+function candidatePriority(candidate: DiscoveryCandidateInput | null, now = new Date()): number {
+  if (!candidate) return 0;
   const hasVerifiedDate = Boolean(candidate.deadlineAt || candidate.eventAt);
   const isOfficial = candidate.decisionDetails.evidence_level === "official";
   const isOpen = candidate.decisionDetails.listing_status === "open";
   const hasKnownCost = !/^not stated$/i.test(candidate.decisionDetails.cost);
-  return candidate.decisionDetails.fit_score + (hasVerifiedDate ? 25 : 0) +
+  const target = candidate.deadlineAt ?? candidate.eventAt;
+  const daysAway = target ? (new Date(target).getTime() - now.getTime()) / 86_400_000 : Infinity;
+  const urgency = daysAway >= 0 && daysAway <= 3 ? 35 : daysAway <= 7 ? 20 : daysAway <= 30 ? 10 : 0;
+  return candidate.decisionDetails.fit_score + urgency + (hasVerifiedDate ? 25 : 0) +
     (isOfficial ? 10 : 0) + (isOpen ? 15 : 0) + (hasKnownCost ? 5 : 0);
 }
 
@@ -647,13 +757,22 @@ async function candidateAlreadyExists(
   candidate: DiscoveryCandidateInput,
   checkedAt: Date,
 ): Promise<boolean> {
-  const historyFields = "id,status,error_message,event_at,deadline_at,decision_details,telegram_message_id,opportunity_id" as const;
+  const historyFields =
+    "id,name,identity_key,status,error_message,event_at,deadline_at,decision_details,telegram_message_id,opportunity_id" as const;
   const existing = await database.from("opportunity_discovery_candidates")
     .select(historyFields).eq("source_url", candidate.sourceUrl).maybeSingle();
   if (existing.error) throw new Error(existing.error.message);
   const exact = existing.data as ExistingCandidate | null;
   if (exact && blocksRediscovery(exact, candidate, checkedAt)) return true;
-  if (exact) await removeRefreshCard(exact);
+  const identityKey = discoveryCandidateIdentityKey(candidate.name, candidate.eventAt, candidate.deadlineAt);
+  const identities = await database.from("opportunity_discovery_candidates")
+    .select(historyFields).eq("identity_key", identityKey).limit(20);
+  if (identities.error) throw new Error(identities.error.message);
+  if (
+    (identities.data ?? []).some((row) =>
+      row.id !== exact?.id && blocksRediscovery(row as ExistingCandidate, candidate, checkedAt)
+    )
+  ) return true;
   let existingNameQuery = database.from("opportunity_discovery_candidates")
     .select(historyFields).eq("name", candidate.name);
   if (candidate.organization !== "Not stated") {
@@ -664,7 +783,6 @@ async function candidateAlreadyExists(
   if (existingName.error) throw new Error(existingName.error.message);
   const nameMatches = (existingName.data ?? []) as ExistingCandidate[];
   if (nameMatches.some((row) => blocksRediscovery(row, candidate, checkedAt))) return true;
-  for (const row of nameMatches) await removeRefreshCard(row);
   const saved = await database.from("opportunities").select("id")
     .eq("source_url", candidate.sourceUrl).maybeSingle();
   if (saved.error) throw new Error(saved.error.message);
@@ -676,7 +794,12 @@ async function candidateAlreadyExists(
   }
   const savedName = await savedNameQuery.limit(1);
   if (savedName.error) throw new Error(savedName.error.message);
-  return (savedName.data?.length ?? 0) > 0;
+  if ((savedName.data?.length ?? 0) > 0) return true;
+  const savedItems = await database.from("opportunities").select("name,event_at,deadline_at").limit(1_000);
+  if (savedItems.error) throw new Error(savedItems.error.message);
+  return (savedItems.data ?? []).some((row) =>
+    discoveryCandidateIdentityKey(row.name, row.event_at, row.deadline_at) === identityKey
+  );
 }
 
 async function insertCandidate(
@@ -686,6 +809,8 @@ async function insertCandidate(
 ): Promise<OpportunityDiscoveryCandidateRow | null> {
   const values = {
     source_key: candidate.sourceKey,
+    identity_key: discoveryCandidateIdentityKey(candidate.name, candidate.eventAt, candidate.deadlineAt),
+    priority: candidatePriority(candidate, now),
     source_url: candidate.sourceUrl,
     source_name: candidate.sourceName,
     name: candidate.name,
@@ -711,10 +836,20 @@ async function insertCandidate(
     opportunity_id: null,
     updated_at: now.toISOString(),
   };
-  const inserted = await database.from("opportunity_discovery_candidates")
-    .upsert(values, { onConflict: "source_url" }).select("*").single();
+  const previous = await database.from("opportunity_discovery_candidates")
+    .select("id,status,opportunity_id,telegram_message_id").eq("source_url", candidate.sourceUrl).maybeSingle();
+  if (previous.error) throw new Error(previous.error.message);
+  if (previous.data?.opportunity_id || previous.data?.status === "saved") return null;
+  const inserted = previous.data
+    ? await database.from("opportunity_discovery_candidates").update(values)
+      .eq("id", previous.data.id).eq("status", previous.data.status).is("opportunity_id", null).select("*")
+      .maybeSingle()
+    : await database.from("opportunity_discovery_candidates").insert(values).select("*").single();
   if (inserted.error?.code === "23505") return null;
   if (inserted.error) throw new Error(inserted.error.message);
+  if (inserted.data && previous.data?.telegram_message_id) {
+    await removeRefreshCard(previous.data as ExistingCandidate);
+  }
   return inserted.data as OpportunityDiscoveryCandidateRow;
 }
 
@@ -748,9 +883,10 @@ async function deliverCandidate(
   database: SupabaseClient,
   row: OpportunityDiscoveryCandidateRow,
 ): Promise<boolean> {
-  if (row.event_at && new Date(row.event_at) <= new Date()) {
+  if (discoveryCandidateExpired(row)) {
     await database.from("opportunity_discovery_candidates").update({
-      status: "expired", updated_at: new Date().toISOString(),
+      status: "expired",
+      updated_at: new Date().toISOString(),
     }).eq("id", row.id);
     return false;
   }
@@ -777,7 +913,7 @@ async function deliverCandidate(
   return true;
 }
 
-Deno.serve(async (request: Request): Promise<Response> => {
+async function handleDiscoveryRequest(request: Request): Promise<Response> {
   if (request.method !== "POST") return jsonResponse({ error: "POST required" }, 405);
   const suppliedSecret = request.headers.get("x-cron-secret") ?? "";
   if (!constantTimeEqual(suppliedSecret, requiredEnv("OPPORTUNITY_CRON_SECRET"))) {
@@ -786,11 +922,15 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   let notifyEmpty = false;
   let maintenanceOnly = false;
+  let dryRun = false;
+  let refreshSent = false;
   let requestedSearchPage: 0 | 1 | 2 | 3 | null = null;
   try {
     const body = await request.json() as Record<string, unknown>;
     notifyEmpty = body?.notify_empty === true;
     maintenanceOnly = body?.maintenance_only === true;
+    dryRun = body?.dry_run === true;
+    refreshSent = body?.refresh_sent === true;
     const page = Number(body?.search_page);
     if (Number.isInteger(page) && page >= 0 && page <= 3) {
       requestedSearchPage = page as 0 | 1 | 2 | 3;
@@ -801,240 +941,428 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
   const database = adminClient();
   const now = new Date();
-  let relevant = 0;
-  let sent = 0;
-  let duplicates = 0;
-  let deferred = 0;
-  let rawSearchResults = 0;
-  let filteredOut = 0;
-  let officialSourcesChecked = 0;
-  let officialPagesChecked = 0;
-  const uniquePageUrls = new Set<string>();
-  const candidatePool = new Map<string, DiscoveryCandidateInput>();
-  const sourceErrors: string[] = [];
-  let removedClosedCards = 0;
-  let removedDuplicateCards = 0;
-  let removedIrrelevantCards = 0;
-  let dismissedDoNotTrack = 0;
-
-  try {
-    dismissedDoNotTrack = await dismissDoNotTrackCandidates(database);
-  } catch (error) {
-    sourceErrors.push(`Do-not-track cleanup: ${safeError(error)}`);
+  const claim = await database.rpc("claim_opportunity_discovery_run", {
+    p_run_key: discoveryRunKey(notifyEmpty, now, dryRun ? "preview" : maintenanceOnly ? "maintenance" : "search"),
+    // Internal preview and maintenance work must not consume a scheduled slot
+    // or prevent Yusuf from starting a manual search afterwards.
+    p_scheduled: notifyEmpty || dryRun || maintenanceOnly,
+  });
+  if (claim.error) return jsonResponse({ error: safeError(claim.error) }, 500);
+  const run = (Array.isArray(claim.data) ? claim.data[0] : claim.data) as {
+    claimed: boolean;
+    run_id: string | null;
+    reason: string;
+  } | null;
+  if (!run?.claimed || !run.run_id) {
+    return jsonResponse({ ok: true, skipped: true, reason: run?.reason ?? "already_running" });
   }
-
+  const runId = run.run_id;
+  const recordResult = async (metrics: Record<string, unknown>): Promise<Response> => {
+    const errors = Array.isArray(metrics.sourceErrors) ? metrics.sourceErrors : [];
+    const update = await database.from("opportunity_discovery_runs").update({
+      status: errors.length ? "partial" : "completed",
+      finished_at: new Date().toISOString(),
+      metrics,
+    }).eq("id", runId).eq("status", "running");
+    if (update.error) throw new Error(`Could not record search result: ${update.error.message}`);
+    return jsonResponse({ ...metrics, runId });
+  };
   try {
-    removedDuplicateCards = await removeRedundantDiscoveryCards(database);
-  } catch (error) {
-    sourceErrors.push(`Duplicate-card cleanup: ${safeError(error)}`);
-  }
+    let relevant = 0;
+    let sent = 0;
+    let duplicates = 0;
+    let deferred = 0;
+    let rawSearchResults = 0;
+    let filteredOut = 0;
+    let officialSourcesChecked = 0;
+    let officialPagesChecked = 0;
+    let verifiedWebPages = 0;
+    const uniquePageUrls = new Set<string>();
+    const candidatePool = new Map<string, DiscoveryCandidateInput>();
+    const sourceErrors: string[] = [];
+    let removedClosedCards = 0;
+    let removedDuplicateCards = 0;
+    let removedIrrelevantCards = 0;
+    let dismissedDoNotTrack = 0;
+    let refreshedCards = 0;
+    let retiredCards = 0;
 
-  try {
-    removedIrrelevantCards = await removeIrrelevantDirectCalendarCards(database);
-  } catch (error) {
-    sourceErrors.push(`Relevance cleanup: ${safeError(error)}`);
-  }
-
-  try {
-    removedClosedCards = await removeClearlyClosedCards(database);
-    if (removedClosedCards > 0) {
-      await sendText(
-        `Removed ${removedClosedCards} discovery card${removedClosedCards === 1 ? "" : "s"} because the official source says applications are closed.`,
-      );
+    if (refreshSent && !dryRun) {
+      const refresh = await refreshSentCards(database, now);
+      refreshedCards = refresh.updated;
+      retiredCards = refresh.retired;
+      sourceErrors.push(...refresh.errors);
     }
-  } catch (error) {
-    sourceErrors.push(`Closed-card cleanup: ${safeError(error)}`);
-  }
 
-  if (maintenanceOnly) {
-    return jsonResponse({
-      ok: sourceErrors.length === 0,
-      maintenanceOnly: true,
+    try {
+      if (!dryRun) dismissedDoNotTrack = await dismissDoNotTrackCandidates(database);
+    } catch (error) {
+      sourceErrors.push(`Do-not-track cleanup: ${safeError(error)}`);
+    }
+
+    try {
+      if (!dryRun) removedDuplicateCards = await removeRedundantDiscoveryCards(database);
+    } catch (error) {
+      sourceErrors.push(`Duplicate-card cleanup: ${safeError(error)}`);
+    }
+
+    try {
+      if (!dryRun) removedIrrelevantCards = await removeIrrelevantDirectCalendarCards(database);
+    } catch (error) {
+      sourceErrors.push(`Relevance cleanup: ${safeError(error)}`);
+    }
+
+    try {
+      if (!dryRun) removedClosedCards = await removeClearlyClosedCards(database);
+      if (removedClosedCards > 0) {
+        await sendText(
+          `Removed ${removedClosedCards} discovery card${
+            removedClosedCards === 1 ? "" : "s"
+          } because the official source says applications are closed.`,
+        );
+      }
+    } catch (error) {
+      sourceErrors.push(`Closed-card cleanup: ${safeError(error)}`);
+    }
+
+    if (maintenanceOnly) {
+      return await recordResult({
+        ok: sourceErrors.length === 0,
+        maintenanceOnly: true,
+        removedDuplicateCards,
+        removedIrrelevantCards,
+        removedClosedCards,
+        dismissedDoNotTrack,
+        refreshedCards,
+        retiredCards,
+        sourceErrors,
+      });
+    }
+
+    if (!dryRun) {
+      const staleClaims = await database.from("opportunity_discovery_candidates").update({
+        status: "unknown",
+        error_message: "Delivery result was not safely recorded; not retried.",
+        updated_at: now.toISOString(),
+      }).eq("status", "sending").lt("claimed_at", new Date(now.getTime() - 30 * 60 * 1_000).toISOString());
+      if (staleClaims.error) throw new Error(staleClaims.error.message);
+    }
+
+    let insertedThisRun = 0;
+    const addCandidate = (candidate: DiscoveryCandidateInput): void => {
+      if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) {
+        filteredOut += 1;
+        return;
+      }
+      const candidateKey = discoveryCandidateIdentityKey(candidate.name, candidate.eventAt, candidate.deadlineAt) ||
+        canonicalizeUrl(candidate.sourceUrl) || candidate.sourceUrl;
+      const previous = candidatePool.get(candidateKey);
+      if (!previous || candidatePriority(candidate) > candidatePriority(previous)) {
+        candidatePool.set(candidateKey, candidate);
+      }
+    };
+    const saveCandidate = async (candidate: DiscoveryCandidateInput): Promise<void> => {
+      if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) {
+        filteredOut += 1;
+        return;
+      }
+      if (await candidateAlreadyExists(database, candidate, now)) {
+        duplicates += 1;
+        return;
+      }
+      if (dryRun) return;
+      if (insertedThisRun >= MAX_NEW_CANDIDATES_PER_RUN) {
+        deferred += 1;
+        return;
+      }
+      const row = await insertCandidate(database, candidate, now);
+      if (!row) {
+        duplicates += 1;
+        return;
+      }
+      insertedThisRun += 1;
+    };
+
+    try {
+      const directScan = await scanDirectSources(now);
+      officialSourcesChecked += directScan.sourcesChecked;
+      officialPagesChecked += directScan.pagesChecked;
+      filteredOut += directScan.filteredOut;
+      sourceErrors.push(...directScan.errors);
+      for (const url of directScan.pageUrls) uniquePageUrls.add(url);
+      for (const candidate of directScan.candidates) addCandidate(candidate);
+    } catch (error) {
+      sourceErrors.push(`Direct official sources: ${safeError(error)}`);
+    }
+
+    for (const source of SOURCES) {
+      try {
+        const chapterHtml = await fetchOfficialPage(source.url);
+        officialSourcesChecked += 1;
+        officialPagesChecked += 1;
+        uniquePageUrls.add(canonicalizeUrl(source.url) ?? source.url);
+        const urls = gdgUpcomingEventUrls(chapterHtml);
+        for (const url of urls) {
+          officialPagesChecked += 1;
+          uniquePageUrls.add(canonicalizeUrl(url) ?? url);
+          const eventHtml = await fetchOfficialPage(url);
+          const candidate = gdgCandidateFromEventPage(eventHtml, source.name, now);
+          if (!candidate) {
+            filteredOut += 1;
+            continue;
+          }
+          addCandidate(candidate);
+        }
+      } catch (error) {
+        sourceErrors.push(`${source.name}: ${safeError(error)}`);
+      }
+    }
+
+    const braveApiKey = Deno.env.get("OPPORTUNITY_BRAVE_SEARCH_API_KEY")?.trim() ?? "";
+    const searches = opportunitySearchQueries(now);
+    const searchPage = requestedSearchPage ?? opportunitySearchPage(now);
+    let queriesRun = 0;
+    if (!braveApiKey) {
+      sourceErrors.push("Broad web and social search is not configured");
+    } else {
+      const searchResults = await Promise.allSettled(searches.map(async (search) => ({
+        search,
+        results: await searchBrave(search, braveApiKey, searchPage),
+      })));
+      const processedWebUrls = new Set<string>();
+      const verificationTasks = new Map<
+        string,
+        { result: BraveWebResult; candidate: DiscoveryCandidateInput | null }
+      >();
+      for (const result of searchResults) {
+        if (result.status === "rejected") {
+          sourceErrors.push(`Web search: ${safeError(result.reason)}`);
+          continue;
+        }
+        queriesRun += 1;
+        for (const webResult of result.value.results) {
+          rawSearchResults += 1;
+          const rawUrl = cleanText(webResult.url, 2_000);
+          const pageUrl = canonicalizeUrl(rawUrl);
+          if (!pageUrl || processedWebUrls.has(pageUrl)) continue;
+          processedWebUrls.add(pageUrl);
+          uniquePageUrls.add(pageUrl);
+          const candidate = candidateFromBraveResult(webResult, now);
+          if (
+            (isOfficialOpportunityUrl(pageUrl) || candidate?.decisionDetails.evidence_level === "official") &&
+            isOpportunityDetailUrl(pageUrl)
+          ) {
+            if ([...candidatePool.values()].some((value) => value.sourceUrl === pageUrl)) continue;
+            // A current page can disagree with a stale search snippet. Open likely
+            // official opportunities even when the snippet's old date was rejected.
+            if (
+              candidate ||
+              /(?:AI|robot|cloud|software|startup|hackathon|fellowship|internship|program|programme|devfest|الذكاء|تدريب|هاكاثون)/i
+                .test(`${webResult.title} ${webResult.description}`)
+            ) {
+              verificationTasks.set(pageUrl, { result: webResult, candidate });
+            }
+            continue;
+          }
+          if (!candidate || !shouldNotifyDiscoveryCandidate(candidate, now)) {
+            filteredOut += 1;
+            continue;
+          }
+          addCandidate(candidate);
+        }
+      }
+      const tasks = [...verificationTasks.entries()]
+        .sort((left, right) => candidatePriority(right[1].candidate, now) - candidatePriority(left[1].candidate, now))
+        .slice(0, MAX_VERIFIED_WEB_PAGES);
+      const verified = await mapWithConcurrency(tasks, 6, async ([url, task]) => {
+        const html = await fetchOfficialPage(url);
+        const organization = task.candidate?.organization ?? new URL(url).hostname.replace(/^www\./, "");
+        return candidateFromOfficialPageHtml(html, url, "web-verified", organization, organization, now);
+      });
+      for (let index = 0; index < verified.length; index += 1) {
+        const result = verified[index];
+        if (result.status === "rejected") {
+          sourceErrors.push(`Official verification ${new URL(tasks[index][0]).hostname}: ${safeError(result.reason)}`);
+          continue;
+        }
+        verifiedWebPages += 1;
+        officialPagesChecked += 1;
+        if (result.value && shouldNotifyDiscoveryCandidate(result.value, now)) addCandidate(result.value);
+        else filteredOut += 1;
+      }
+    }
+
+    relevant = candidatePool.size;
+    const rankedCandidates = [...candidatePool.values()].sort((left, right) =>
+      candidatePriority(right) - candidatePriority(left)
+    );
+    for (const candidate of rankedCandidates) {
+      try {
+        await saveCandidate(candidate);
+      } catch (error) {
+        sourceErrors.push(`${candidate.sourceName}: ${safeError(error)}`);
+      }
+    }
+
+    // Store every accepted match first. Delivery limits no longer throw away the
+    // sixth and later matches; the next search can send them after rechecking.
+    let queuedCount = 0;
+    if (!dryRun) {
+      const pending = await database.from("opportunity_discovery_candidates")
+        .select("*").in("status", ["new", "failed"])
+        .order("priority", { ascending: false }).order("created_at", { ascending: true }).limit(200);
+      if (pending.error) throw new Error(pending.error.message);
+      for (const queuedRow of (pending.data ?? []) as OpportunityDiscoveryCandidateRow[]) {
+        if (sent >= MAX_RUN_MESSAGES) break;
+        if (
+          queuedRow.status === "failed" && (queuedRow.attempt_count >= 3 ||
+            (queuedRow.claimed_at && new Date(queuedRow.claimed_at).getTime() > now.getTime() - 15 * 60_000))
+        ) continue;
+        try {
+          if (discoveryCandidateExpired(queuedRow, now)) {
+            const expired = await database.from("opportunity_discovery_candidates").update({
+              status: "expired",
+              updated_at: now.toISOString(),
+            })
+              .eq("id", queuedRow.id).in("status", ["new", "failed"]);
+            if (expired.error) throw new Error(expired.error.message);
+            continue;
+          }
+          let current = queuedRow;
+          if (
+            queuedRow.decision_details?.evidence_level === "official" &&
+            new Date(queuedRow.checked_at).getTime() < now.getTime() - 6 * 60 * 60_000
+          ) {
+            const fresh = candidateFromOfficialPageHtml(
+              await fetchOfficialPage(queuedRow.source_url),
+              queuedRow.source_url,
+              "queue-recheck",
+              queuedRow.source_name,
+              queuedRow.organization,
+              now,
+            );
+            if (!fresh || !shouldNotifyDiscoveryCandidate(fresh, now)) {
+              await database.from("opportunity_discovery_candidates").update({
+                status: "expired",
+                updated_at: now.toISOString(),
+                error_message: "The current official page no longer confirms an actionable opportunity.",
+              })
+                .eq("id", queuedRow.id).in("status", ["new", "failed"]);
+              continue;
+            }
+            // Use the fresh facts while preserving the row's delivery claim and Save token.
+            const refreshed = await database.from("opportunity_discovery_candidates").update({
+              source_text: fresh.sourceText,
+              name: fresh.name,
+              category: fresh.category,
+              event_at: fresh.eventAt,
+              event_raw: fresh.eventRaw,
+              event_precision: fresh.eventPrecision,
+              deadline_at: fresh.deadlineAt,
+              deadline_raw: fresh.deadlineRaw,
+              deadline_precision: fresh.deadlinePrecision,
+              decision_details: fresh.decisionDetails,
+              notes: fresh.notes,
+              checked_at: now.toISOString(),
+            }).eq("id", queuedRow.id).in("status", ["new", "failed"]).select("*").maybeSingle();
+            if (refreshed.error) throw new Error(refreshed.error.message);
+            if (!refreshed.data) continue;
+            current = refreshed.data as OpportunityDiscoveryCandidateRow;
+          }
+          if (await deliverCandidate(database, current)) sent += 1;
+        } catch (error) {
+          sourceErrors.push(`Queued opportunity: ${safeError(error)}`);
+        }
+      }
+      const queue = await database.from("opportunity_discovery_candidates").select("id", { count: "exact", head: true })
+        .eq("status", "new");
+      if (queue.error) throw new Error(queue.error.message);
+      queuedCount = queue.count ?? 0;
+    }
+
+    const checked = uniquePageUrls.size;
+    let emptyNoticeSent = false;
+    if (!dryRun && notifyEmpty && sent === 0 && removedClosedCards === 0) {
+      const dubaiHour = Number(new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Dubai",
+        hour: "2-digit",
+        hourCycle: "h23",
+      }).format(now));
+      const runLabel = dubaiHour < 12 ? "7 AM" : "7 PM";
+      const base = `${runLabel} search: ${officialSourcesChecked} official sources and ${queriesRun} web searches.`;
+      const outcome = duplicates > 0
+        ? `No new cards. ${duplicates} matches were already seen.`
+        : "No new suitable opportunities passed verification.";
+      const retry = sourceErrors.length > 0
+        ? ` ${sourceErrors.length} source checks failed and will retry next run.`
+        : "";
+      const message = `${base} ${outcome}${retry}`;
+      try {
+        await sendText(message);
+        emptyNoticeSent = true;
+      } catch (error) {
+        sourceErrors.push(`Scheduled status message: ${safeError(error)}`);
+      }
+    }
+
+    return await recordResult({
+      ok: true,
+      checked,
+      relevant,
+      sent,
+      duplicates,
+      inserted: insertedThisRun,
+      deferred,
+      queriesRun,
+      searchPage,
+      uniquePagesChecked: checked,
+      rawSearchResults,
+      filteredOut,
+      officialSourcesChecked,
+      officialPagesChecked,
+      verifiedWebPages,
+      queued: queuedCount,
+      dryRun,
+      ...(dryRun
+        ? {
+          preview: rankedCandidates.slice(0, 30).map((value) => ({
+            name: value.name,
+            source: value.sourceUrl,
+            category: value.category,
+            event: value.eventAt,
+            deadline: value.deadlineAt,
+            cost: value.decisionDetails.cost,
+            summary: value.decisionDetails.summary,
+            verification: value.decisionDetails.verification_method,
+            status: value.decisionDetails.listing_status,
+          })),
+        }
+        : {}),
+      removedClosedCards,
       removedDuplicateCards,
       removedIrrelevantCards,
-      removedClosedCards,
       dismissedDoNotTrack,
+      refreshedCards,
+      retiredCards,
+      broadSearchConfigured: Boolean(braveApiKey),
+      emptyNoticeSent,
       sourceErrors,
     });
-  }
-
-  await database.from("opportunity_discovery_candidates").update({
-    status: "unknown",
-    error_message: "Delivery result was not safely recorded; not retried.",
-    updated_at: now.toISOString(),
-  }).eq("status", "sending").lt("claimed_at", new Date(now.getTime() - 30 * 60 * 1_000).toISOString());
-
-  const queued = await database.from("opportunity_discovery_candidates")
-    .select("*").in("status", ["new", "failed"])
-    .order("created_at", { ascending: true }).limit(MAX_RUN_MESSAGES);
-  if (queued.error) return jsonResponse({ error: safeError(queued.error) }, 500);
-  for (const row of (queued.data ?? []) as OpportunityDiscoveryCandidateRow[]) {
-    if (await deliverCandidate(database, row)) sent += 1;
-  }
-
-  let insertedThisRun = 0;
-  const addCandidate = (candidate: DiscoveryCandidateInput): void => {
-    if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) {
-      filteredOut += 1;
-      return;
-    }
-    const candidateKey = discoveryCandidateIdentityKey(candidate.name, candidate.eventAt, candidate.deadlineAt) ||
-      canonicalizeUrl(candidate.sourceUrl) || candidate.sourceUrl;
-    const previous = candidatePool.get(candidateKey);
-    if (!previous || candidatePriority(candidate) > candidatePriority(previous)) {
-      candidatePool.set(candidateKey, candidate);
-    }
-  };
-  const saveCandidate = async (candidate: DiscoveryCandidateInput): Promise<void> => {
-    if (isDoNotTrackOpportunity(candidate.name, candidate.sourceUrl)) {
-      filteredOut += 1;
-      return;
-    }
-    if (await candidateAlreadyExists(database, candidate, now)) {
-      duplicates += 1;
-      return;
-    }
-    if (insertedThisRun >= MAX_NEW_CANDIDATES_PER_RUN) {
-      deferred += 1;
-      return;
-    }
-    const row = await insertCandidate(database, candidate, now);
-    if (!row) {
-      duplicates += 1;
-      return;
-    }
-    insertedThisRun += 1;
-    if (sent < MAX_RUN_MESSAGES && await deliverCandidate(database, row)) sent += 1;
-  };
-
-  try {
-    const directScan = await scanDirectSources(now);
-    officialSourcesChecked += directScan.sourcesChecked;
-    officialPagesChecked += directScan.pagesChecked;
-    filteredOut += directScan.filteredOut;
-    sourceErrors.push(...directScan.errors);
-    for (const url of directScan.pageUrls) uniquePageUrls.add(url);
-    for (const candidate of directScan.candidates) addCandidate(candidate);
   } catch (error) {
-    sourceErrors.push(`Direct official sources: ${safeError(error)}`);
-  }
-
-  for (const source of SOURCES) {
-    try {
-      const chapterHtml = await fetchOfficialPage(source.url);
-      officialSourcesChecked += 1;
-      officialPagesChecked += 1;
-      uniquePageUrls.add(canonicalizeUrl(source.url) ?? source.url);
-      const urls = gdgUpcomingEventUrls(chapterHtml);
-      for (const url of urls) {
-        officialPagesChecked += 1;
-        uniquePageUrls.add(canonicalizeUrl(url) ?? url);
-        const eventHtml = await fetchOfficialPage(url);
-        const candidate = gdgCandidateFromEventPage(eventHtml, source.name, now);
-        if (!candidate) {
-          filteredOut += 1;
-          continue;
-        }
-        addCandidate(candidate);
-      }
-    } catch (error) {
-      sourceErrors.push(`${source.name}: ${safeError(error)}`);
+    const message = safeError(error);
+    console.error(`Opportunity search failed: ${message}`);
+    await database.from("opportunity_discovery_runs").update({
+      status: "failed",
+      finished_at: new Date().toISOString(),
+      error_message: message,
+    }).eq("id", runId).eq("status", "running");
+    if (notifyEmpty && !dryRun) {
+      try {
+        await sendText("The opportunity search could not finish. Send /health for its status.");
+      } catch { /* Recorded above. */ }
     }
+    return jsonResponse({ ok: false, error: message, runId }, 500);
   }
+}
 
-  const braveApiKey = Deno.env.get("OPPORTUNITY_BRAVE_SEARCH_API_KEY")?.trim() ?? "";
-  const searches = opportunitySearchQueries(now);
-  const searchPage = requestedSearchPage ?? opportunitySearchPage(now);
-  let queriesRun = 0;
-  if (!braveApiKey) {
-    sourceErrors.push("Broad web and social search is not configured");
-  } else {
-    const searchResults = await Promise.allSettled(searches.map(async (search) => ({
-      search,
-      results: await searchBrave(search, braveApiKey, searchPage),
-    })));
-    const processedWebUrls = new Set<string>();
-    for (const result of searchResults) {
-      if (result.status === "rejected") {
-        sourceErrors.push(`Web search: ${safeError(result.reason)}`);
-        continue;
-      }
-      queriesRun += 1;
-      for (const webResult of result.value.results) {
-        rawSearchResults += 1;
-        const rawUrl = cleanText(webResult.url, 2_000);
-        const pageUrl = canonicalizeUrl(rawUrl);
-        if (!pageUrl || processedWebUrls.has(pageUrl)) continue;
-        processedWebUrls.add(pageUrl);
-        uniquePageUrls.add(pageUrl);
-        const candidate = candidateFromBraveResult(webResult, now);
-        if (!candidate || !shouldNotifyDiscoveryCandidate(candidate, now)) {
-          filteredOut += 1;
-          continue;
-        }
-        addCandidate(candidate);
-      }
-    }
-  }
-
-  relevant = candidatePool.size;
-  const rankedCandidates = [...candidatePool.values()].sort((left, right) =>
-    candidatePriority(right) - candidatePriority(left)
-  );
-  for (const candidate of rankedCandidates) {
-    try {
-      await saveCandidate(candidate);
-    } catch (error) {
-      sourceErrors.push(`${candidate.sourceName}: ${safeError(error)}`);
-    }
-  }
-
-  const checked = uniquePageUrls.size;
-  let emptyNoticeSent = false;
-  if (notifyEmpty && sent === 0 && removedClosedCards === 0) {
-    const dubaiHour = Number(new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Dubai",
-      hour: "2-digit",
-      hourCycle: "h23",
-    }).format(now));
-    const runLabel = dubaiHour < 12 ? "7 AM" : "7 PM";
-    const base = `${runLabel} scan complete: ${officialSourcesChecked} official sources and ${queriesRun} public web/social searches reviewed ${checked} unique pages.`;
-    const outcome = duplicates > 0
-      ? `${duplicates} suitable matches were already in your inbox; no new cards.`
-      : "No new suitable opportunities passed verification.";
-    const retry = sourceErrors.length > 0
-      ? ` ${sourceErrors.length} source checks failed and will retry next run.`
-      : "";
-    const message = `${base} ${outcome}${retry}`;
-    try {
-      await sendText(message);
-      emptyNoticeSent = true;
-    } catch (error) {
-      sourceErrors.push(`Scheduled status message: ${safeError(error)}`);
-    }
-  }
-
-  return jsonResponse({
-    ok: true,
-    checked,
-    relevant,
-    sent,
-    duplicates,
-    inserted: insertedThisRun,
-    deferred,
-    queriesRun,
-    searchPage,
-    uniquePagesChecked: checked,
-    rawSearchResults,
-    filteredOut,
-    officialSourcesChecked,
-    officialPagesChecked,
-    removedClosedCards,
-    removedDuplicateCards,
-    removedIrrelevantCards,
-    dismissedDoNotTrack,
-    broadSearchConfigured: Boolean(braveApiKey),
-    emptyNoticeSent,
-    sourceErrors,
-  });
-});
+Deno.serve(handleDiscoveryRequest);

@@ -89,6 +89,10 @@ export interface OpportunityDecisionDetails {
   recommendation: OpportunityRecommendation;
   fit_score: number;
   checked_at: string;
+  verification_method?: "direct_page" | "official_feed" | "search_snippet";
+  event_end_at?: string | null;
+  event_end_precision?: DatePrecision | null;
+  date_conflict?: string | null;
 }
 
 export interface OpportunityDraft {
@@ -188,6 +192,8 @@ export interface OpportunityDiscoveryCandidateRow {
   checked_at: string;
   created_at: string;
   updated_at: string;
+  identity_key?: string | null;
+  priority?: number;
 }
 
 export type DraftField =

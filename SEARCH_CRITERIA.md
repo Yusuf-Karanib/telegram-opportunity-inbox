@@ -67,6 +67,12 @@ Before recommending an item, record:
 
 Never fill missing facts with guesses. If official sources conflict, use the newest official source and clearly note the conflict.
 
+A search result on an official domain is still a lead until its current page is opened. Keep the verification method (`search_snippet`, `direct_page`, or `official_feed`) with the record. Use the current page's facts when a search snippet is stale. Exclude official news articles, press releases, About pages, agendas, sponsorship sales, and exhibition-package sales from opportunity cards.
+
+Classify from the title and the specific opportunity. A statement such as "does not guarantee an internship" is not evidence of an internship. A programme's pitch-deck requirement to describe its competition does not make the programme a competition. Related cards, speaker biographies, website menus, hidden popups, chatbots, and other cohorts must not define the item's relevance, dates, status, cost, or eligibility.
+
+Retain known attendance price tiers and their conditions. Separate member/student prices from ordinary admission and cash investment or equity from fees. Keep multi-day event end dates when published. When an organizer's description and structured event data give conflicting dates, leave the date unassigned and show both claims for confirmation.
+
 The Telegram bot checks selected official pages directly and uses public web search for broader discovery. Direct checks include major UAE AI and technology ecosystems, event calendars, venues, chambers, accelerators, universities, and communities. The search must include conferences, festivals, exhibitions, expos, and forums, not only programmes and hackathons. It still cannot read private or unindexed social posts. Manually pasted items use only the text Yusuf supplies unless a separate discovery check verifies their source.
 
 If an official event is rescheduled, reopened, or reuses the same URL for a new edition, compare its new verified date and status with the old record. A stale duplicate record must not suppress a genuinely new future opportunity.

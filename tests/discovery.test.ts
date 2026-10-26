@@ -469,7 +469,8 @@ test("extracts a future event date from an official title", () => {
   assert.equal(candidate.category, "event");
   assert.ok(candidate.eventAt);
   assert.equal(candidate.decisionDetails.evidence_level, "official");
-  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), true);
+  assert.equal(candidate.decisionDetails.verification_method, "search_snippet");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-08T08:00:00Z")), false);
 });
 
 test("does not notify invite-only results", () => {
@@ -483,11 +484,10 @@ test("does not notify invite-only results", () => {
 });
 
 test("notifies an official open application even when no deadline is published", () => {
-  const candidate = candidateFromBraveResult({
-    title: "Hub71 Applied AI Startup Program",
-    url: "https://www.hub71.com/programs/applied-ai",
-    description: "Applications are open for an applied AI startup accelerator in Abu Dhabi. Start application now.",
-  }, new Date("2026-10-08T08:00:00Z"));
+  const candidate = candidateFromOfficialPageHtml(
+    "<main><h1>Hub71 Applied AI Startup Program</h1><p>Applications are open for an applied AI startup accelerator in Abu Dhabi. Start application now.</p></main>",
+    "https://www.hub71.com/programs/applied-ai", "hub71", "Hub71", "Hub71", new Date("2026-10-08T08:00:00Z"),
+  );
   assert.ok(candidate);
   assert.equal(candidate.deadlineAt, null);
   assert.equal(candidate.decisionDetails.evidence_level, "official");
@@ -510,7 +510,7 @@ test("recognizes UAE government and university domains as official sources", () 
   assert.ok(university);
   assert.equal(government.decisionDetails.evidence_level, "official");
   assert.equal(university.decisionDetails.evidence_level, "official");
-  assert.equal(shouldNotifyDiscoveryCandidate(government, new Date("2026-10-12T08:00:00Z")), true);
+  assert.equal(shouldNotifyDiscoveryCandidate(government, new Date("2026-10-12T08:00:00Z")), false);
 });
 
 test("finds a future date range on an official hackathon page", () => {
@@ -524,10 +524,11 @@ test("finds a future date range on an official hackathon page", () => {
   assert.equal(candidate.category, "hackathon");
   assert.equal(candidate.eventRaw, "Nov 14, 2026");
   assert.equal(candidate.decisionDetails.evidence_level, "official");
-  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-12T08:00:00Z")), true);
+  assert.equal(candidate.decisionDetails.event_end_at, "2026-11-15T19:59:00.000Z");
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-12T08:00:00Z")), false);
 });
 
-test("allows dated platform and strong social leads while marking them unverified", () => {
+test("withholds dated platform and social leads until registration is explicitly open", () => {
   const platform = candidateFromBraveResult({
     title: "Dubai Applied AI Workshop 20 November 2026",
     url: "https://lu.ma/applied-ai-dubai",
@@ -542,8 +543,8 @@ test("allows dated platform and strong social leads while marking them unverifie
   assert.ok(social);
   assert.equal(platform.decisionDetails.listing_status, "unverified");
   assert.equal(social.decisionDetails.listing_status, "unverified");
-  assert.equal(shouldNotifyDiscoveryCandidate(platform, new Date("2026-10-12T08:00:00Z")), true);
-  assert.equal(shouldNotifyDiscoveryCandidate(social, new Date("2026-10-12T08:00:00Z")), true);
+  assert.equal(shouldNotifyDiscoveryCandidate(platform, new Date("2026-10-12T08:00:00Z")), false);
+  assert.equal(shouldNotifyDiscoveryCandidate(social, new Date("2026-10-12T08:00:00Z")), false);
 });
 
 test("recognizes an Arabic UAE opportunity without inventing a date", () => {
@@ -557,5 +558,5 @@ test("recognizes an Arabic UAE opportunity without inventing a date", () => {
   assert.equal(candidate.deadlineAt, null);
   assert.equal(candidate.decisionDetails.listing_status, "open");
   assert.equal(candidate.decisionDetails.evidence_level, "official");
-  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-12T08:00:00Z")), true);
+  assert.equal(shouldNotifyDiscoveryCandidate(candidate, new Date("2026-10-12T08:00:00Z")), false);
 });

@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.ns", "esnext", "dom", "dom.iterable"]
+  },
+  "imports": {
+    "htmlparser2": "npm:htmlparser2@10.1.0"
+  }
+}

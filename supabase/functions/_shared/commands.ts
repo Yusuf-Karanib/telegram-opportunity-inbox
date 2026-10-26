@@ -6,6 +6,7 @@ export type BotCommand =
   | { kind: "help" }
   | { kind: "inbox" }
   | { kind: "discover" }
+  | { kind: "health" }
   | { kind: "add"; text: string }
   | { kind: "cancel" }
   | { kind: "list"; view: OpportunityView }
@@ -38,6 +39,7 @@ export function parseCommand(input: unknown): BotCommand | null {
   if (verb === "start" || verb === "help") return { kind: "help" };
   if (verb === "inbox") return { kind: "inbox" };
   if (verb === "discover") return { kind: "discover" };
+  if (verb === "health") return { kind: "health" };
   if (verb === "cancel") return { kind: "cancel" };
   if (verb === "add") return { kind: "add", text: rest };
 
